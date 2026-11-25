@@ -31,6 +31,7 @@ from llama_mcp_bridge.presets import (
     search_hf_gguf_models,
     verify_tier_models,
 )
+from llama_mcp_bridge.supervisor import LlamaSupervisor
 
 
 def _macos_release_asset(arch: str) -> str:
@@ -432,6 +433,150 @@ def _download_tier_models(profile: SystemProfile, models_dir: Path, dry_run: boo
                 raise
 
 
+_PRESET_NAMES = (
+    "digest",
+    "coder-fast",
+    "coder",
+    "coder-long",
+    "vision",
+    "vision-deep",
+    "reasoner",
+    "analyst",
+    "generalist",
+)
+
+_HARNESS_GUIDES: dict[str, tuple[str, str]] = {
+    "claude-code": ("~/.claude.json", "https://docs.anthropic.com/en/docs/claude-code/mcp"),
+    "cursor": ("~/.cursor/mcp.json", "https://docs.cursor.com/context/model-context-protocol"),
+    "cline": ("VS Code globalStorage cline_mcp_settings.json", "https://docs.cline.bot/mcp-servers/configuring-mcp-servers"),
+    "windsurf": ("~/.codeium/windsurf/mcp_config.json", "https://docs.windsurf.com/windsurf/mcp"),
+    "zed": ("~/.config/zed/settings.json", "https://zed.dev/docs/assistant/model-context-protocol"),
+    "antigravity": ("~/.gemini/antigravity/mcp_config.json", "https://antigravity.google/docs/mcp"),
+    "other": ("Your MCP client's mcpServers JSON config", "https://modelcontextprotocol.io/quickstart/user"),
+}
+
+
+def ps_main() -> None:
+    """Render an Ollama-style live status table for server health and loaded presets."""
+    console = Console()
+    cfg = load_config()
+    status = LlamaSupervisor(cfg).get_status()
+    state_label = "[green]ONLINE[/green]" if status["healthy"] else "[red]OFFLINE[/red]"
+    console.print(
+        f"Server: [bold]{cfg.host}:{cfg.port}[/bold] | State: {state_label} | "
+        f"Residency: [cyan]{status.get('residency', cfg.residency)}[/cyan] | "
+        f"Tier: [cyan]{status['tier']}[/cyan]"
+    )
+    table = Table(title="Specialist Presets")
+    table.add_column("Preset", style="bold")
+    table.add_column("Status")
+    loaded_map = status.get("models", {})
+    for name in _PRESET_NAMES:
+        st = loaded_map.get(name, "idle")
+        badge = "[green]LOADED[/green]" if st == "loaded" else "[dim]IDLE[/dim]"
+        table.add_row(name, badge)
+    console.print(table)
+
+
+def _run_doctor() -> int:
+    """Run an end-to-end diagnostic check and return exit code (0=ok/warn, 1=fail)."""
+    console = Console()
+    cfg = load_config()
+    workspace = Path(cfg.workspace)
+    table = Table(title="llama-mcp-bridge Doctor")
+    table.add_column("Check", style="bold")
+    table.add_column("Status")
+    table.add_column("Details")
+
+    failed = False
+
+    bridge_ini = workspace / "bridge.ini"
+    models_ini = Path(cfg.models_ini)
+    ini_ok = True
+    for p in (bridge_ini, models_ini):
+        if not p.is_file():
+            ini_ok = False
+        else:
+            try:
+                cp = configparser.ConfigParser()
+                cp.read(p, encoding="utf-8")
+            except configparser.Error:
+                ini_ok = False
+    if ini_ok:
+        table.add_row("Config files", "[green]PASS[/green]", f"{bridge_ini} & {models_ini}")
+    else:
+        failed = True
+        table.add_row("Config files", "[red]FAIL[/red]", "Missing or invalid bridge.ini / models.ini")
+
+    srv_bin = _find_llama_server(workspace, cfg.llama_server_bin)
+    if srv_bin and (sys.platform == "win32" or os.access(srv_bin, os.X_OK)):
+        table.add_row("llama-server", "[green]PASS[/green]", str(srv_bin))
+    else:
+        failed = True
+        table.add_row("llama-server", "[red]FAIL[/red]", "Binary not found or not executable")
+
+    missing_models: list[str] = []
+    if models_ini.is_file():
+        cp = configparser.ConfigParser()
+        cp.read(models_ini, encoding="utf-8")
+        for sec in cp.sections():
+            for key in ("model", "mmproj"):
+                if cp.has_option(sec, key):
+                    mp = Path(cp.get(sec, key))
+                    if not mp.is_file() or mp.stat().st_size == 0:
+                        missing_models.append(str(mp))
+    if missing_models:
+        failed = True
+        table.add_row(
+            "GGUF files",
+            "[red]FAIL[/red]",
+            f"{len(missing_models)} missing. Run: llama-mcp-install --download-models --models-dir {cfg.models_dir}",
+        )
+    else:
+        table.add_row("GGUF files", "[green]PASS[/green]", f"All referenced files present in {cfg.models_dir}")
+
+    status = LlamaSupervisor(cfg).get_status()
+    if status["healthy"]:
+        table.add_row("Server /health", "[green]PASS[/green]", f"Reachable at {status['server_url']}")
+    else:
+        table.add_row("Server /health", "[yellow]WARN[/yellow]", "Stopped (lazy startup will spawn on demand)")
+
+    console.print(table)
+    return 1 if failed else 0
+
+
+def _configure_client(harness: str) -> None:
+    """Print zero-mutation MCP client JSON snippet, target config path, and official guide URL."""
+    console = Console()
+    if harness == "prompt":
+        harness = Prompt.ask(
+            "Choose your coding harness",
+            choices=[k for k in _HARNESS_GUIDES if k != "prompt"],
+            default="claude-code",
+        )
+    cfg = load_config()
+    target_path, doc_url = _HARNESS_GUIDES.get(harness, _HARNESS_GUIDES["other"])
+    snippet = json.dumps(
+        {
+            "mcpServers": {
+                "local-ai": {
+                    "command": "llama-mcp-bridge",
+                    "env": {"LLAMA_MCP_HOME": cfg.workspace},
+                }
+            }
+        },
+        indent=2,
+    )
+    console.print(
+        Panel(
+            f"[bold]Target config (reference):[/bold] {target_path}\n"
+            f"[bold]Official guide:[/bold] {doc_url}\n\n{snippet}",
+            title=f"MCP Setup: {harness}",
+            border_style="cyan",
+        )
+    )
+
+
 def _run_tui_wizard() -> None:
     """Interactive rich-powered setup wizard for llama-mcp-bridge."""
     console = Console()
@@ -523,6 +668,8 @@ def _run_tui_wizard() -> None:
         console.print("[bold]Required GGUF model paths:[/bold]")
         for ln in gguf_lines:
             console.print(f"  {ln}")
+    if Confirm.ask("Show MCP client setup snippet for a specific harness?", default=False):
+        _configure_client("prompt")
 
 
 def main() -> None:
@@ -546,10 +693,27 @@ def main() -> None:
         default="moderate",
         help="Memory residency profile (stingy, moderate, snappy).",
     )
+    parser.add_argument("--ps", action="store_true", help="Show live server and preset status.")
+    parser.add_argument("--doctor", action="store_true", help="Run end-to-end diagnostic checklist.")
+    parser.add_argument(
+        "--configure-client",
+        nargs="?",
+        const="prompt",
+        choices=["prompt", "claude-code", "cursor", "cline", "windsurf", "zed", "antigravity", "other"],
+        help="Print ready-to-paste MCP client JSON and official guide URL.",
+    )
     parser.add_argument("--tui", action="store_true", help="Launch interactive rich TUI wizard.")
     parser.add_argument("--models-dir", type=str, help="Path to models directory.")
 
     args = parser.parse_args()
+    if args.ps:
+        ps_main()
+        return
+    if args.doctor:
+        sys.exit(_run_doctor())
+    if args.configure_client:
+        _configure_client(args.configure_client)
+        return
     if args.verify_models:
         console = Console()
         results = verify_tier_models(args.tier)

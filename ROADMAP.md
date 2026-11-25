@@ -19,20 +19,16 @@
 
 ---
 
-## Upcoming: `v0.3.0` Roadmap
+### `v0.3.0` — Integrity, Residency, Recovery & Diagnostics (Shipped)
 
-### Milestone 3.1 — Download Integrity (`X-Linked-ETag` SHA-256 Checksums)
-- Verify completed `.part` GGUF downloads against Hugging Face's `X-Linked-ETag` SHA-256 digest before atomic rename.
-- Surface clear mismatch errors and preserve `.part` files only when safe to resume.
+#### Milestone 3.1 — Download Integrity (`X-Linked-ETag` SHA-256 Checksums) ✅
+- Verified completed `.part` GGUF downloads against Hugging Face's `X-Linked-ETag` SHA-256 digest before atomic rename.
 
-### Milestone 3.2 — Memory Residency Profiles (`stingy`, `moderate`, `snappy`)
-- Add a configurable `residency` setting in `bridge.ini`, `models.ini`, and the TUI/CLI controlling `models-max` and idle eviction speed (`15s` / `120s` / `600s`).
+#### Milestone 3.2 — Memory Residency Profiles (`stingy`, `moderate`, `snappy`) ✅
+- Added configurable `residency` setting in `bridge.ini`, `models.ini`, and the TUI/CLI controlling `models-max` and `sleep-idle-seconds` (`15s` / `120s` / `600s`).
 
-### Milestone 3.3 — Graceful OOM & Cold-Swap Timeout Recovery
-- Structured detection of VRAM OOM vs. cold-swap timeouts in `supervisor.py` and `bridge.py` with actionable recovery hints.
-- Optional `fallback_on_oom = true` auto-retry on `digest` when a heavier preset exhausts VRAM.
+#### Milestone 3.3 — Graceful OOM & Cold-Swap Timeout Recovery ✅
+- Added bounded stderr capture, structured OOM vs. cold-swap timeout classification, and opt-in `fallback_on_oom = true` auto-retry on `digest`.
 
-### Milestone 3.4 — Diagnostics & Safe Harness Onboarding (`--ps`, `--doctor`, `--configure-client`)
-- `llama-mcp-ps` / `--ps` for Ollama-style live loaded-preset inspection.
-- `--doctor` for end-to-end verification of `bridge.ini`, `models.ini`, `llama-server` binary, GGUF files, and `/health`.
-- `--configure-client` for zero-mutation MCP client onboarding: prints the ready-to-paste `mcpServers` JSON snippet and points directly to the official MCP setup documentation URL for the user's chosen coding harness (Claude Code, Cursor, Cline, Windsurf, Zed, Antigravity) without modifying external config files.
+#### Milestone 3.4 — Diagnostics & Safe Harness Onboarding (`--ps`, `--doctor`, `--configure-client`) ✅
+- Added `llama-mcp-ps` / `--ps` for live loaded-preset inspection, `--doctor` for end-to-end environment checks, and `--configure-client` for zero-mutation MCP client onboarding.

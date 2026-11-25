@@ -290,7 +290,7 @@ def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
             "llama_mcp_bridge.installer.Prompt.ask",
             side_effect=[str(custom_ws), str(custom_ws / "models"), "skip", "moderate"],
         ),
-        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False]),
+        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False, False]),
     ):
         _run_tui_wizard()
 
@@ -582,3 +582,79 @@ def test_supervisor_get_status_reports_residency():
     with patch.object(sup, "_check_health", return_value=False):
         status = sup.get_status()
     assert status["residency"] == "stingy"
+
+
+def test_ps_main_renders_status_table(capsys, monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import ps_main
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    fake_status = {
+        "healthy": True,
+        "server_url": "http://127.0.0.1:8080",
+        "residency": "snappy",
+        "tier": "16gb",
+        "vram_gb": 16.0,
+        "gpu_vendor": "nvidia",
+        "models": {"coder": "loaded"},
+    }
+    with patch("llama_mcp_bridge.installer.LlamaSupervisor.get_status", return_value=fake_status):
+        ps_main()
+
+    out = capsys.readouterr().out
+    assert "ONLINE" in out
+    assert "snappy" in out
+    assert "LOADED" in out
+
+
+def test_run_doctor_passes_and_fails_on_missing_gguf(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _run_doctor
+    from llama_mcp_bridge.presets import generate_models_ini
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (tmp_path / "bridge.ini").write_text(
+        f"[bridge]\nworkspace = {tmp_path}\nmodels_dir = {models_dir}\n"
+        f"models_ini = {tmp_path / 'models.ini'}\n",
+        encoding="utf-8",
+    )
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
+    ini_text = generate_models_ini(profile, models_dir=str(models_dir))
+    (tmp_path / "models.ini").write_text(ini_text, encoding="utf-8")
+
+    fake_bin = tmp_path / "llama-server"
+    fake_bin.write_text("#!/bin/sh\n")
+    fake_bin.chmod(0o755)
+
+    with (
+        patch("llama_mcp_bridge.installer._find_llama_server", return_value=fake_bin),
+        patch("llama_mcp_bridge.installer.LlamaSupervisor.get_status", return_value={"healthy": False, "server_url": "http://127.0.0.1:8080"}),
+    ):
+        assert _run_doctor() == 1
+
+    import configparser
+
+    cp = configparser.ConfigParser()
+    cp.read_string(ini_text)
+    for sec in cp.sections():
+        for key in ("model", "mmproj"):
+            if cp.has_option(sec, key):
+                Path(cp.get(sec, key)).write_bytes(b"gguf")
+
+    with (
+        patch("llama_mcp_bridge.installer._find_llama_server", return_value=fake_bin),
+        patch("llama_mcp_bridge.installer.LlamaSupervisor.get_status", return_value={"healthy": True, "server_url": "http://127.0.0.1:8080"}),
+    ):
+        assert _run_doctor() == 0
+
+
+def test_configure_client_prints_json_and_url_without_mutating(capsys, monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import _configure_client
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    _configure_client("cursor")
+    out = capsys.readouterr().out
+    assert "https://docs.cursor.com/context/model-context-protocol" in out
+    assert str(tmp_path) in out
+    assert "mcpServers" in out
