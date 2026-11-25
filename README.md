@@ -12,14 +12,18 @@ A cross-platform Model Context Protocol (MCP) bridge connecting MCP clients to a
 
 ## Installation & Execution
 
-### Direct from GitHub (recommended)
+### Option 1: Global Install from GitHub (End Users)
+
+Installs into an isolated `uv` tool environment and exposes `llama-mcp-bridge` and `llama-mcp-install` globally on `PATH` (required for GUI MCP clients):
 
 ```bash
 uv tool install git+https://github.com/OakHell/llama-mcp-bridge
 uv tool update-shell
 ```
 
-### From a local clone (editable)
+### Option 2: Global Editable Install from a Local Clone (Active Development)
+
+Exposes the commands globally on `PATH` while reflecting live edits to `src/` immediately:
 
 ```bash
 git clone https://github.com/OakHell/llama-mcp-bridge.git
@@ -28,21 +32,17 @@ uv tool install --editable .
 uv tool update-shell
 ```
 
-### Ephemeral execution without installing (`uvx`)
+### Option 3: Scoped Local Checkout without Global Install (`uv sync` / `uv run`)
+
+Keeps everything inside the local `.venv/` without modifying `~/.local/bin` or `PATH`:
 
 ```bash
-uvx --from git+https://github.com/OakHell/llama-mcp-bridge llama-mcp-install --dry-run
-```
-
-Running `uv tool update-shell` ensures `llama-mcp-bridge` and `llama-mcp-install` are on your `PATH`.
-
-### Via `uv run` (local checkout)
-
-```bash
-uv sync
+uv sync --dev
 uv run llama-mcp-install --dry-run
-uv run llama-mcp-bridge
+uv run pytest -v
 ```
+
+> **Zero-install dry run:** You can also run `uvx --from git+https://github.com/OakHell/llama-mcp-bridge llama-mcp-install --dry-run` without installing anything.
 
 ### Installer Modes (`--mode`)
 
