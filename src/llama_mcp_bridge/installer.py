@@ -26,6 +26,7 @@ from rich.table import Table
 from llama_mcp_bridge.config import get_config_home, load_config
 from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
 from llama_mcp_bridge.presets import (
+    _VALID_PRESETS,
     generate_models_ini,
     get_tier_model_specs,
     probe_model_metadata,
@@ -728,6 +729,15 @@ def _run_tui_wizard() -> None:
         default="moderate",
     )
 
+    default_presets = ["digest"] if profile.gpu_vendor == "cpu" else list(_VALID_PRESETS)
+    from llama_mcp_bridge.models_cli import select_presets_interactive
+
+    selected_presets = select_presets_interactive(
+        profile,
+        initial_selected=default_presets,
+        title="Step 3b: Select Specialist Presets",
+    )
+
     mode = "skip"
     if not found_bin:
         mode = Prompt.ask(
@@ -754,16 +764,21 @@ def _run_tui_wizard() -> None:
 
     os.environ["LLAMA_MCP_HOME"] = str(workspace)
     workspace.mkdir(parents=True, exist_ok=True)
-    ini_content = generate_models_ini(profile, models_dir=str(models_dir), residency=residency)
+    ini_content = generate_models_ini(
+        profile,
+        models_dir=str(models_dir),
+        residency=residency,
+        selected_presets=selected_presets,
+    )
     (workspace / "models.ini").write_text(ini_content, encoding="utf-8")
 
-    specs = get_tier_model_specs(profile.tier)
+    specs = get_tier_model_specs(profile.tier, presets=selected_presets or None)
     total_gb = sum(s["size_gb"] for s in specs)
     if Confirm.ask(
-        f"Download recommended starter GGUF models for your {profile.tier} tier now (~{total_gb:.1f} GB)?",
+        f"Download selected starter GGUF models for your {profile.tier} tier now (~{total_gb:.1f} GB)?",
         default=False,
     ):
-        _download_tier_models(profile, models_dir, dry_run=False)
+        _download_tier_models(profile, models_dir, dry_run=False, presets=selected_presets or None)
     elif Confirm.ask(
         "Download only the lightweight 'digest' model (~0.8 GB) instead?",
         default=False,
@@ -798,9 +813,15 @@ def _run_tui_wizard() -> None:
         _configure_client("prompt")
 
 
+    print("Manage, add, or remove models anytime with: llama-mcp-models")
+
+
 def main() -> None:
     """Main entry point for the installer CLI."""
-    parser = argparse.ArgumentParser(description="Install and configure llama-mcp-bridge.")
+    parser = argparse.ArgumentParser(
+        description="Install and configure llama-mcp-bridge.",
+        epilog="Manage, add, or remove models anytime with: llama-mcp-models",
+    )
     parser.add_argument(
         "--mode",
         choices=["prebuilt", "source-hermetic", "source-system", "system-bin"],
@@ -837,6 +858,12 @@ def main() -> None:
     )
     parser.add_argument("--tui", action="store_true", help="Launch interactive rich TUI wizard.")
     parser.add_argument("--models-dir", type=str, help="Path to models directory.")
+    parser.add_argument(
+        "--presets",
+        nargs="+",
+        metavar="PRESET",
+        help="Only emit selected presets in models.ini.",
+    )
 
     args = parser.parse_args()
     if args.uninstall:
@@ -880,7 +907,12 @@ def main() -> None:
     models_dir = Path(args.models_dir) if args.models_dir else home / "models"
 
     profile = detect_hardware()
-    ini_content = generate_models_ini(profile, models_dir=str(models_dir), residency=args.residency)
+    ini_content = generate_models_ini(
+        profile,
+        models_dir=str(models_dir),
+        residency=args.residency,
+        selected_presets=args.presets,
+    )
 
     print(f"Mode: {args.mode}")
     print(f"Hardware: {profile.os_name}/{profile.arch} {profile.gpu_vendor} ({profile.vram_gb} GB, tier={profile.tier})")
@@ -918,6 +950,7 @@ def main() -> None:
             encoding="utf-8",
         )
     print(f"Wrote {home / 'models.ini'}")
+    print("Manage, add, or remove models anytime with: llama-mcp-models")
 
 
 if __name__ == "__main__":

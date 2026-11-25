@@ -32,3 +32,11 @@
 
 #### Milestone 3.4 — Diagnostics & Safe Harness Onboarding (`--ps`, `--doctor`, `--configure-client`) ✅
 - Added `llama-mcp-ps` / `--ps` for live loaded-preset inspection, `--doctor` for end-to-end environment checks, and `--configure-client` for zero-mutation MCP client onboarding.
+
+---
+
+### `v0.4.0` — Dedicated Model Management (`llama-mcp-models`) & Selective Presets (Shipped)
+- **Dedicated `llama-mcp-models` CLI (`models_cli.py`)**: Interactive checkbox TUI (`Up`/`Down` or `j`/`k`, `Space` toggle, `a` all/none, `Enter` apply, plus non-TTY numbered fallback) and scripted subcommands (`list`, `add`, `remove`, `--add`, `--remove`, `-y`/`--yes`, `--dry-run`).
+- **Selective Preset Generation & Deduplicated Merging (`presets.py`)**: Added `selected_presets` filtering to `generate_models_ini()`, `merge_models_ini()` to add or update presets without duplicate `[section]` headers, and `--presets` on `llama-mcp-install` (wired into `_run_tui_wizard()`).
+- **Safe Shared-GGUF Removal (`remove_models_from_ini()`)**: Unlinks `.gguf` and `mmproj` files only when no remaining preset in `models.ini` references them.
+- **CPU Backend Guard & Installer Polish**: Enforces `n-gpu-layers = 0` and `device = none` on CPU-only profiles, flattens nested prebuilt release directories with symlinks intact, supports `--uninstall` cleanup, and falls back across recent `llama.cpp` releases.

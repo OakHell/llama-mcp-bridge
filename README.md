@@ -77,6 +77,7 @@ uv run pytest -v
 | `--dry-run` | Prints planned actions without writing files or executing subprocesses. |
 | `-y`, `--yes` | Auto-confirms `llama-server` installation when undetected. |
 | `--download-models [PRESET ...]` | Downloads curated GGUF starter-pack models for your detected tier, or only specific presets (e.g. `--download-models digest` for lightweight/CPU-only setups). |
+| `--presets PRESET [PRESET ...]` | Limits `models.ini` generation to the specified specialist presets (default: all 9 presets). |
 | `--verify-models` | Verifies Hugging Face URLs for `--tier` (or all tiers) and suggests live GGUF alternatives on 404. |
 | `--tier` | Target VRAM tier (`6gb`, `8gb`, `12gb`, `16gb`, `24gb+`) for `--verify-models`. |
 | `--residency` | Memory residency profile (`stingy`, `moderate`, `snappy`; default `moderate`). |
@@ -89,6 +90,15 @@ uv run pytest -v
 | `--install-service` | Generates an OS-specific user service (`systemd` on Linux, `launchd` on macOS). |
 
 > **Hardware Prerequisites:** `llama-mcp-install` audits your GPU/OS tools (`nvidia-smi`, `nvcc`, `rocminfo`, `vulkaninfo`, `xcode-select`, `cmake`) and warns if any BYO drivers or SDKs are missing before offering to install `llama-server`.
+
+## Model Management (`llama-mcp-models`)
+
+Manage, add, or remove specialist presets anytime after installation without re-running the full installer:
+
+- **Interactive Checkbox Selector:** Run `llama-mcp-models` in a terminal to toggle presets with `Up/Down` (or `j/k`), `Space` to toggle `[x]` / `[ ]`, `a` for all/none, and `Enter` to apply (with a numbered fallback when stdin is not a TTY).
+- **List Presets:** `llama-mcp-models list` displays all 9 presets, their `models.ini` status, tier GGUF filenames, disk presence, and sizes.
+- **Add Presets:** `llama-mcp-models add digest coder` (or `--add`) merges the requested presets into `models.ini` without duplicating existing `[section]` headers and downloads their GGUFs.
+- **Remove Presets Safely:** `llama-mcp-models remove vision` (or `--remove`) prompts for confirmation (`-y` / `--yes` skips the prompt; `--dry-run` previews changes), removes the preset sections from `models.ini`, and only deletes `.gguf` / `mmproj` files on disk if no remaining preset in `models.ini` references them.
 
 ## Configuration (`LLAMA_MCP_HOME` & `bridge.ini`)
 

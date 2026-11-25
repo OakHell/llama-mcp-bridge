@@ -140,3 +140,12 @@ def test_generate_models_ini_cpu_forces_pure_cpu_backend():
     gpu_parser.read_string(generate_models_ini(gpu_profile, models_dir="/models"))
     assert gpu_parser.get("*", "n-gpu-layers") == "-1"
     assert not gpu_parser.has_option("*", "device")
+
+
+def test_generate_models_ini_selected_presets_cpu():
+    cpu_profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "ubuntu", "6gb")
+    parser = configparser.ConfigParser()
+    parser.read_string(generate_models_ini(cpu_profile, models_dir="/models", selected_presets=["digest"]))
+    assert parser.sections() == ["*", "digest"]
+    assert parser.get("*", "n-gpu-layers") == "0"
+    assert parser.get("*", "device") == "none"

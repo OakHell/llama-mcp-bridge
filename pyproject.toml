@@ -4,7 +4,7 @@ requires = ["hatchling"]
 
 [project]
 name = "llama-mcp-bridge"
-version = "0.3.3"
+version = "0.4.0"
 license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = ["fastmcp", "pathspec", "requests", "rich"]
@@ -13,6 +13,7 @@ dependencies = ["fastmcp", "pathspec", "requests", "rich"]
 llama-mcp-bridge = "llama_mcp_bridge.bridge:main"
 llama-mcp-install = "llama_mcp_bridge.installer:main"
 llama-mcp-ps = "llama_mcp_bridge.installer:ps_main"
+llama-mcp-models = "llama_mcp_bridge.models_cli:main"
 
 [dependency-groups]
 dev = ["pytest", "ruff"]

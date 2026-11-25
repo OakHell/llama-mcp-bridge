@@ -1,11 +1,13 @@
 """VRAM-tier presets and models.ini generation for llama-mcp-bridge."""
 
 import concurrent.futures
+import configparser
 import json
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 from .hardware import SystemProfile
@@ -36,6 +38,7 @@ def generate_models_ini(
     profile: SystemProfile,
     models_dir: str = "/mnt/ai/models",
     residency: str = "moderate",
+    selected_presets: Sequence[str] | None = None,
 ) -> str:
     """Generate a models.ini configuration string based on hardware profile.
 
@@ -265,6 +268,9 @@ def generate_models_ini(
         "generalist",
         "digest",
     ]
+    if selected_presets is not None:
+        selected_set = set(selected_presets)
+        section_order = [s for s in section_order if s in selected_set]
     for section_name in section_order:
         lines.append(f"[{section_name}]")
         for key, value in base_config[section_name].items():
@@ -440,3 +446,92 @@ def verify_tier_models(tier: str | None = None) -> list[dict[str, Any]]:
             }
         )
     return results
+
+
+def merge_models_ini(
+    existing_path: Path,
+    profile: SystemProfile,
+    residency: str,
+    models_dir: Path,
+    presets_to_add: Sequence[str],
+) -> str:
+    """Merge selected presets into models.ini without duplicating [section] headers."""
+    unknown = [p for p in presets_to_add if p not in _VALID_PRESETS]
+    if unknown:
+        raise ValueError(f"Unknown preset(s): {', '.join(unknown)}. Valid presets: {', '.join(_VALID_PRESETS)}")
+
+    fresh = configparser.ConfigParser()
+    fresh.read_string(
+        generate_models_ini(
+            profile,
+            models_dir=str(models_dir),
+            residency=residency,
+            selected_presets=list(_VALID_PRESETS),
+        )
+    )
+
+    merged = configparser.ConfigParser()
+    if existing_path.is_file():
+        merged.read(existing_path, encoding="utf-8")
+    if "*" not in merged and "*" in fresh:
+        merged["*"] = dict(fresh["*"])
+
+    for preset in presets_to_add:
+        if preset in fresh:
+            merged[preset] = dict(fresh[preset])
+
+    lines: list[str] = []
+    for sec in merged.sections():
+        lines.append(f"[{sec}]")
+        for key, val in merged.items(sec):
+            lines.append(f"{key} = {val}")
+        lines.append("")
+    content = "\n".join(lines)
+    existing_path.parent.mkdir(parents=True, exist_ok=True)
+    existing_path.write_text(content, encoding="utf-8")
+    return content
+
+
+def remove_models_from_ini(
+    existing_path: Path,
+    presets_to_remove: Sequence[str],
+    models_dir: Path,
+    delete_files: bool = True,
+) -> list[str]:
+    """Remove presets from models.ini and delete unreferenced GGUF/mmproj files."""
+    if not existing_path.is_file():
+        return []
+
+    cp = configparser.ConfigParser()
+    cp.read(existing_path, encoding="utf-8")
+
+    candidate_files: set[str] = set()
+    for preset in presets_to_remove:
+        if cp.has_section(preset):
+            for key in ("model", "mmproj"):
+                if cp.has_option(preset, key):
+                    candidate_files.add(Path(cp.get(preset, key)).name)
+            cp.remove_section(preset)
+
+    still_referenced: set[str] = set()
+    for sec in cp.sections():
+        for key in ("model", "mmproj"):
+            if cp.has_option(sec, key):
+                still_referenced.add(Path(cp.get(sec, key)).name)
+
+    lines: list[str] = []
+    for sec in cp.sections():
+        lines.append(f"[{sec}]")
+        for key, val in cp.items(sec):
+            lines.append(f"{key} = {val}")
+        lines.append("")
+    existing_path.write_text("\n".join(lines), encoding="utf-8")
+
+    deleted: list[str] = []
+    if delete_files:
+        for fname in sorted(candidate_files - still_referenced):
+            target = models_dir / fname
+            if target.is_file():
+                target.unlink()
+                deleted.append(fname)
+    return deleted

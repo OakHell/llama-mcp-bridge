@@ -286,6 +286,7 @@ def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
     with (
         patch("llama_mcp_bridge.installer.detect_hardware", return_value=profile),
         patch("llama_mcp_bridge.installer._find_llama_server", return_value=None),
+        patch("llama_mcp_bridge.models_cli.select_presets_interactive", return_value=["digest"]),
         patch(
             "llama_mcp_bridge.installer.Prompt.ask",
             side_effect=[str(custom_ws), str(custom_ws / "models"), "moderate", "skip"],
@@ -867,3 +868,96 @@ def test_auto_install_flattens_nested_dir_and_preserves_symlinks(tmp_path: Path)
     assert os.access(target_bin, os.X_OK)
     assert not (tmp_path / "bin" / "llama-b12728").exists()
     assert (tmp_path / "bin" / "libllama.so").is_symlink()
+
+
+def test_merge_models_ini_no_duplicate_sections(tmp_path: Path):
+    import configparser
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.presets import generate_models_ini, merge_models_ini
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "ubuntu", "6gb")
+    models_ini = tmp_path / "models.ini"
+    models_ini.write_text(
+        generate_models_ini(profile, models_dir=str(tmp_path / "models"), selected_presets=["digest"]),
+        encoding="utf-8",
+    )
+
+    merged = merge_models_ini(models_ini, profile, "moderate", tmp_path / "models", ["digest", "coder"])
+    assert merged.count("[digest]") == 1
+    assert merged.count("[coder]") == 1
+
+    cp = configparser.ConfigParser()
+    cp.read_string(merged)
+    assert cp.sections() == ["*", "digest", "coder"]
+
+
+def test_remove_models_from_ini_protects_shared_gguf(tmp_path: Path):
+    import configparser
+
+    from llama_mcp_bridge.presets import remove_models_from_ini
+
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    shared_gguf = models_dir / "shared.gguf"
+    unshared_gguf = models_dir / "unique.gguf"
+    shared_gguf.write_bytes(b"shared")
+    unshared_gguf.write_bytes(b"unique")
+
+    models_ini = tmp_path / "models.ini"
+    models_ini.write_text(
+        "[*]\nmodels-max = 2\n\n"
+        "[coder]\nmodel = shared.gguf\n\n"
+        "[analyst]\nmodel = shared.gguf\n\n"
+        "[digest]\nmodel = unique.gguf\n",
+        encoding="utf-8",
+    )
+
+    deleted = remove_models_from_ini(models_ini, ["coder", "digest"], models_dir, delete_files=True)
+    assert shared_gguf.exists()
+    assert not unshared_gguf.exists()
+    assert deleted == ["unique.gguf"]
+
+    cp = configparser.ConfigParser()
+    cp.read(models_ini, encoding="utf-8")
+    assert cp.sections() == ["*", "analyst"]
+
+
+def test_run_doctor_passes_with_only_selected_presets_on_disk(tmp_path: Path, monkeypatch, capsys):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _run_doctor
+    from llama_mcp_bridge.presets import generate_models_ini, get_tier_model_specs
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+
+    digest_spec = get_tier_model_specs("6gb", presets=["digest"])[0]
+    (models_dir / digest_spec["filename"]).write_bytes(b"gguf")
+
+    llama_bin = tmp_path / "bin" / "llama-server"
+    llama_bin.parent.mkdir()
+    llama_bin.write_bytes(b"#!/bin/sh\n")
+    llama_bin.chmod(0o755)
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "ubuntu", "6gb")
+    (tmp_path / "models.ini").write_text(
+        generate_models_ini(profile, models_dir=str(models_dir), selected_presets=["digest"]),
+        encoding="utf-8",
+    )
+    (tmp_path / "bridge.ini").write_text(
+        f"[bridge]\nhost = 127.0.0.1\nport = 8080\nllama_server_bin = {llama_bin}\nmodels_dir = {models_dir}\n",
+        encoding="utf-8",
+    )
+
+    health_resp = MagicMock()
+    health_resp.status_code = 200
+    with (
+        patch("llama_mcp_bridge.installer._find_llama_server", return_value=str(llama_bin)),
+        patch("requests.get", return_value=health_resp),
+    ):
+        _run_doctor()
+
+    out = capsys.readouterr().out
+    assert "FAIL" not in out
+    assert "All referenced files present in" in out
