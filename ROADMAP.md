@@ -73,3 +73,7 @@
 ### `v0.7.0` — GGUF Binary Header Heuristics & Auto-Tuning
 - **Zero-Dependency GGUF Header Inspection**: Parse binary header metadata (`general.architecture`, `*.block_count`, `*.attention.head_count_kv`, `*.context_length`) from the first few kilobytes of downloaded or local `.gguf` files without loading model weights.
 - **KV-Cache & VRAM Auto-Sizing (`--tune-mode`)**: Compute exact KV-cache memory per token against detected hardware VRAM/RAM to estimate safe `n-gpu-layers` and `ctx-size` values for any model architecture, exposed via `--tune-mode conservative|approximate` on `llama-mcp-models add` (with an explicit heuristic-tuning disclaimer).
+
+### `v0.8.0` — Agent Self-Bootstrap Skill (`SKILL.md`)
+- **Cross-Harness `SKILL.md` Bundle (`skills/llama-mcp-setup/SKILL.md`)**: Ship a standard Agent Skills folder with YAML frontmatter and a deterministic setup/diagnostic workflow (`detect hardware/workspace -> llama-mcp-install --yes -> llama-mcp-install --doctor -> wire mcpServers -> restart harness`) plus a black-box troubleshooting tree (`--doctor` / `llama-mcp-ps`) so Claude Code, Google Antigravity, Cursor, and Gemini CLI can autonomously bootstrap local specialist models.
+- **One-Command Skill Installation (`llama-mcp-install --install-skill [harness]`)**: Copy or symlink the bundled `llama-mcp-setup` skill into the target harness's global or workspace skill directory (`~/.claude/skills/`, `~/.gemini/config/skills/`, `~/.gemini/skills/`, `~/.cursor/skills/`, or `.agents/skills/`).

@@ -162,7 +162,7 @@ uv run ruff check .
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the full release history (`v0.1.0`–`v0.5.x`) and upcoming milestones: `v0.6.0` (custom `--hf` / local `--file` GGUFs, baseline tuning notice, and MCP client restart reminder) and `v0.7.0` (GGUF binary header KV-cache heuristics via `--tune-mode conservative|approximate`).
+See [ROADMAP.md](ROADMAP.md) for the full release history (`v0.1.0`–`v0.5.x`) and upcoming milestones: `v0.6.0` (custom `--hf` / local `--file` GGUFs, baseline tuning notice, and MCP client restart reminder), `v0.7.0` (GGUF binary header KV-cache heuristics via `--tune-mode conservative|approximate`), and `v0.8.0` (bundled `skills/llama-mcp-setup/SKILL.md` + `llama-mcp-install --install-skill`).
 
 ## License
 
