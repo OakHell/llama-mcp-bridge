@@ -650,11 +650,13 @@ def test_run_doctor_passes_and_fails_on_missing_gguf(monkeypatch, tmp_path: Path
 
 
 def test_configure_client_prints_json_and_url_without_mutating(capsys, monkeypatch, tmp_path: Path):
+    import json
+
     from llama_mcp_bridge.installer import _configure_client
 
     monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
     _configure_client("cursor")
     out = capsys.readouterr().out
     assert "https://docs.cursor.com/context/model-context-protocol" in out
-    assert str(tmp_path) in out
+    assert json.dumps(str(tmp_path)) in out
     assert "mcpServers" in out

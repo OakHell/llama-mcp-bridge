@@ -570,11 +570,12 @@ def _configure_client(harness: str) -> None:
     console.print(
         Panel(
             f"[bold]Target config (reference):[/bold] {target_path}\n"
-            f"[bold]Official guide:[/bold] {doc_url}\n\n{snippet}",
+            f"[bold]Official guide:[/bold] {doc_url}",
             title=f"MCP Setup: {harness}",
             border_style="cyan",
         )
     )
+    console.print(snippet, markup=False, soft_wrap=True)
 
 
 def _run_tui_wizard() -> None:
