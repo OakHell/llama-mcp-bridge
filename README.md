@@ -100,17 +100,16 @@ Manage, add, or remove specialist presets anytime after installation without re-
 - **List Presets:** `llama-mcp-models list` displays all 9 presets, their `models.ini` status, tier GGUF filenames, disk presence, and sizes.
 - **Add Presets:** `llama-mcp-models add digest coder` (or `--add`) merges the requested presets into `models.ini` without duplicating existing `[section]` headers and downloads their GGUFs.
 - **Remove Presets Safely:** `llama-mcp-models remove vision` (or `--remove`) prompts for confirmation (`-y` / `--yes` skips the prompt; `--dry-run` previews changes), removes the preset sections from `models.ini`, and only deletes `.gguf` / `mmproj` files on disk if no remaining preset in `models.ini` references them.
-- **Custom Models (Upcoming `v0.6.0` / `v0.7.0`):** Curated tier presets are provided out of the box; `v0.6.0` adds `--hf <owner>/<repo>[:<quant-or-filename>]` and `--file <path/to/model.gguf>` to `llama-mcp-models add` with a generic baseline `models.ini` tuning notice and MCP client restart reminder (`tools/list`), and `v0.7.0` adds GGUF binary header KV-cache auto-sizing via `--tune-mode conservative|approximate`.
+- **Custom Models (`--hf` / `--file`):** `llama-mcp-models add my_model --hf <owner>/<repo>[:<quant-or-filename>]` (with automatic `mmproj` detection and resumable `.part` + SHA-256 verification) or `--file <path/to/model.gguf>` (`--mmproj` optional) adds any Hugging Face or local GGUF model with a generic baseline `models.ini` entry, prints a tuning & client-restart notice, and exposes it to MCP clients via `ask_preset` or dynamically registered `ask_<preset>` tools.
 
 ## Configuration (`LLAMA_MCP_HOME` & `bridge.ini`)
 
 `llama-mcp-bridge` resolves its workspace root in the following order:
 
-1. `LLAMA_MCP_HOME` environment variable (e.g. `LLAMA_MCP_HOME=/mnt/ai`).
-2. **POSIX (Linux, macOS, FreeBSD):** `~/.llama-mcp-bridge`
-3. **Windows:** `%LOCALAPPDATA%\llama-mcp-bridge`
-
-> **Upcoming (`v0.6.0`):** Global workspace enrolment (`llama-mcp-install --register` / active home pointer) will persist custom installation paths (such as `/mnt/ai`) across all `llama-mcp-*` commands and MCP clients without needing to pass `LLAMA_MCP_HOME` every time.
+1. Explicit CLI flag (`--dir` / `--home`).
+2. `LLAMA_MCP_HOME` environment variable (e.g. `LLAMA_MCP_HOME=/mnt/ai`).
+3. Registered global workspace pointer (`~/.config/llama-mcp-bridge/home` on POSIX, `%APPDATA%\llama-mcp-bridge\home` on Windows) set via `llama-mcp-install --register` (clear with `--unregister`).
+4. **POSIX (Linux, macOS, FreeBSD):** `~/.llama-mcp-bridge` / **Windows:** `%LOCALAPPDATA%\llama-mcp-bridge`
 
 Relative paths in `bridge.ini` (`models_dir`, `models_ini`, `llama_server_bin`) resolve relative to `workspace`. See [bridge.example.ini](bridge.example.ini) for all options (`host`, `port`, `auto_spawn`, `residency`, `health_timeout_s`, `request_timeout_s`, `models_ini`).
 
@@ -164,7 +163,7 @@ uv run ruff check .
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the full release history (`v0.1.0`–`v0.5.x`) and upcoming milestones: `v0.6.0` (custom `--hf` / local `--file` GGUFs, baseline tuning notice, MCP client restart reminder, and global workspace enrolment via `--register`), `v0.7.0` (GGUF binary header KV-cache heuristics via `--tune-mode conservative|approximate`), and `v0.8.0` (bundled `skills/llama-mcp-setup/SKILL.md` + `llama-mcp-install --install-skill`).
+See [ROADMAP.md](ROADMAP.md) for shipped releases (`v0.1.0`–`v0.6.0`, including custom `--hf` / `--file` GGUFs, dynamic `ask_preset` routing, and global `--register` workspace enrolment) and upcoming milestones: `v0.7.0` (GGUF binary header KV-cache heuristics via `--tune-mode conservative|approximate`) and `v0.8.0` (bundled `skills/llama-mcp-setup/SKILL.md` + `llama-mcp-install --install-skill`).
 
 ## License
 

@@ -540,3 +540,127 @@ def remove_models_from_ini(
                 target.unlink()
                 deleted.append(fname)
     return deleted
+
+
+def resolve_hf_gguf_repo(
+    repo_spec: str,
+    mmproj_hint: str | None = None,
+    timeout: float = 15.0,
+) -> tuple[str, str, str | None]:
+    """Resolve an unconstrained Hugging Face GGUF repo[:selector] to (repo_id, model_file, mmproj_file)."""
+    repo_id, _, selector = repo_spec.strip().partition(":")
+    if "/" not in repo_id:
+        raise ValueError(f"Invalid Hugging Face repo '{repo_spec}'; expected '<owner>/<repo>[:<quant-or-filename>]'.")
+
+    api_url = f"https://huggingface.co/api/models/{repo_id}"
+    with urllib.request.urlopen(api_url, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+
+    siblings = [item.get("rfilename", "") for item in payload.get("siblings", []) if isinstance(item, dict)]
+    gguf_files = [f for f in siblings if f.lower().endswith(".gguf")]
+    if not gguf_files:
+        raise ValueError(f"No .gguf files found in Hugging Face repository '{repo_id}'.")
+
+    mmproj_files = [f for f in gguf_files if "mmproj" in Path(f).name.lower()]
+    model_files = [f for f in gguf_files if "mmproj" not in Path(f).name.lower()]
+    if not model_files:
+        raise ValueError(f"No primary model .gguf files found in '{repo_id}' (only mmproj files).")
+
+    chosen_model: str | None = None
+    sel = selector.strip().lower()
+    if sel:
+        exact = [f for f in model_files if f.lower() == sel or Path(f).name.lower() == sel]
+        matches = exact or [f for f in model_files if sel in f.lower()]
+        if not matches:
+            raise ValueError(
+                f"No GGUF matching '{selector}' in {repo_id}. Available: {', '.join(model_files)}"
+            )
+        if len(matches) > 1:
+            raise ValueError(
+                f"Multiple GGUFs match '{selector}' in {repo_id}: {', '.join(matches)}"
+            )
+        chosen_model = matches[0]
+    elif len(model_files) == 1:
+        chosen_model = model_files[0]
+    else:
+        q4_matches = [f for f in model_files if "q4_k_m" in f.lower()]
+        if len(q4_matches) == 1:
+            chosen_model = q4_matches[0]
+        else:
+            raise ValueError(
+                f"Multiple GGUFs found in {repo_id}; specify <repo>:<quant-or-filename>. "
+                f"Available: {', '.join(model_files)}"
+            )
+
+    chosen_mmproj: str | None = None
+    if mmproj_hint:
+        hint_l = mmproj_hint.strip().lower()
+        exact_m = [f for f in mmproj_files if f.lower() == hint_l or Path(f).name.lower() == hint_l]
+        m_matches = exact_m or [f for f in mmproj_files if hint_l in f.lower()]
+        if not m_matches:
+            raise ValueError(
+                f"No mmproj matching '{mmproj_hint}' in {repo_id}. Available: {', '.join(mmproj_files) or 'none'}"
+            )
+        chosen_mmproj = m_matches[0]
+    elif mmproj_files:
+        for pref in ("f16", "bf16", "q8_0"):
+            pref_hit = next((f for f in mmproj_files if pref in f.lower()), None)
+            if pref_hit:
+                chosen_mmproj = pref_hit
+                break
+        if chosen_mmproj is None:
+            chosen_mmproj = mmproj_files[0]
+
+    return repo_id, chosen_model, chosen_mmproj
+
+
+def merge_custom_preset_ini(
+    existing_path: Path,
+    profile: SystemProfile,
+    residency: str,
+    models_dir: Path,
+    preset_name: str,
+    model_path: Path | str,
+    mmproj_path: Path | str | None = None,
+) -> str:
+    """Merge a custom or overridden [preset] entry with generic hardware-tier defaults into models.ini."""
+    clean_name = preset_name.strip()
+    if not clean_name or clean_name == "*":
+        raise ValueError(f"Invalid preset name: {preset_name!r}")
+
+    fresh = configparser.ConfigParser()
+    fresh.read_string(
+        generate_models_ini(
+            profile,
+            models_dir=str(models_dir),
+            residency=residency,
+            selected_presets=[],
+        )
+    )
+
+    merged = configparser.ConfigParser()
+    if existing_path.is_file():
+        merged.read(existing_path, encoding="utf-8")
+    if "*" not in merged and "*" in fresh:
+        merged["*"] = dict(fresh["*"])
+
+    ctx_size = "4096" if profile.tier == "6gb" else "8192"
+    entry: dict[str, str] = {
+        "model": str(model_path),
+        "ctx-size": ctx_size,
+        "temp": "0.3",
+    }
+    if mmproj_path:
+        entry["mmproj"] = str(mmproj_path)
+    merged[clean_name] = entry
+
+    lines: list[str] = []
+    for sec in merged.sections():
+        lines.append(f"[{sec}]")
+        for key, val in merged.items(sec):
+            lines.append(f"{key} = {val}")
+        lines.append("")
+    content = "\n".join(lines)
+    existing_path.parent.mkdir(parents=True, exist_ok=True)
+    existing_path.write_text(content, encoding="utf-8")
+    return content

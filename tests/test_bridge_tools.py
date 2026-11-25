@@ -148,3 +148,27 @@ def test_unconfigured_preset_returns_add_guidance(mock_post, mock_ensure, monkey
     assert out == "Preset 'vision' is not configured in models.ini. Run: llama-mcp-models add vision"
     mock_ensure.assert_not_called()
     mock_post.assert_not_called()
+
+
+@patch("llama_mcp_bridge.bridge.LlamaSupervisor.ensure_running")
+@patch("llama_mcp_bridge.bridge.requests.post")
+def test_ask_preset_and_dynamic_custom_tool_registration(mock_post, mock_ensure, monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.bridge import _register_custom_preset_tools, ask_preset
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    (tmp_path / "models.ini").write_text(
+        "[*]\nmodels-max = 1\n\n[custom-qwen]\nmodel = custom.gguf\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "bridge.ini").write_text(f"[bridge]\nmodels_ini = {tmp_path / 'models.ini'}\n", encoding="utf-8")
+
+    ok_resp = MagicMock(status_code=200)
+    ok_resp.json.return_value = {"choices": [{"message": {"content": "Custom OK"}}]}
+    mock_post.return_value = ok_resp
+
+    registered = _register_custom_preset_tools()
+    assert "ask_custom_qwen" in registered
+
+    out = ask_preset(preset="custom-qwen", prompt="Hello")
+    assert out == "Custom OK"
+    assert mock_post.call_args.kwargs["json"]["model"] == "custom-qwen"
