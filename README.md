@@ -77,6 +77,8 @@ uv run pytest -v
 | `--dry-run` | Prints planned actions without writing files or executing subprocesses. |
 | `-y`, `--yes` | Auto-confirms `llama-server` installation when undetected. |
 | `--download-models` | Downloads curated GGUF starter-pack models for your detected tier (resumable `.part` downloads). |
+| `--verify-models` | Verifies Hugging Face URLs for `--tier` (or all tiers) and suggests live GGUF alternatives on 404. |
+| `--tier` | Target VRAM tier (`6gb`, `8gb`, `12gb`, `16gb`, `24gb+`) for `--verify-models`. |
 | `--tui` | Launches the interactive `rich` TUI setup wizard (also auto-launched on bare `llama-mcp-install` in a TTY). |
 | `--install-service` | Generates an OS-specific user service (`systemd` on Linux, `launchd` on macOS). |
 

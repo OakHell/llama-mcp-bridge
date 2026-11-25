@@ -13,6 +13,7 @@ import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -117,6 +118,44 @@ def _persist_server_bin(workspace: Path, rel_bin: str) -> None:
         parser.write(fh)
 
 
+def _select_llama_release_asset(
+    assets: list[dict[str, Any]], profile: SystemProfile
+) -> dict[str, Any] | None:
+    """Select the best binary llama.cpp release asset for (os_name, arch, gpu_vendor)."""
+    os_tok = "win" if profile.os_name == "windows" else ("macos" if profile.os_name == "darwin" else "ubuntu")
+    is_arm = profile.arch.lower() in ("arm64", "aarch64")
+    arch_toks = ("arm64", "aarch64") if is_arm else ("x64", "x86_64")
+    bad_arch_toks = ("x64", "x86_64") if is_arm else ("arm64", "aarch64")
+
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    for asset in assets:
+        name = asset.get("name", "").lower()
+        if not name.endswith((".zip", ".tar.gz", ".tgz")):
+            continue
+        if any(bad in name for bad in ("cudart", "sha256", "source")):
+            continue
+        if os_tok not in name:
+            continue
+        if any(bt in name for bt in bad_arch_toks):
+            continue
+        if not any(at in name for at in arch_toks) and profile.os_name != "darwin":
+            continue
+
+        score = 0
+        if profile.gpu_vendor == "nvidia" and "cuda" in name or profile.gpu_vendor in ("amd", "intel") and "vulkan" in name:
+            score += 10
+        elif profile.os_name == "windows" and "vulkan" in name and profile.gpu_vendor != "nvidia":
+            score += 5
+        elif "cuda" not in name and "vulkan" not in name and "rocm" not in name:
+            score += 2
+        candidates.append((score, asset))
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1]
+
+
 def _auto_install_llama_server(
     profile: SystemProfile, mode: str, workspace: Path, dry_run: bool, yes: bool
 ) -> None:
@@ -152,15 +191,10 @@ def _auto_install_llama_server(
         api_url = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
         with urllib.request.urlopen(api_url, timeout=15) as resp:
             release = json.loads(resp.read().decode("utf-8"))
-        suffix = (
-            _macos_release_asset(profile.arch)
-            if profile.os_name == "darwin"
-            else ("win" if profile.os_name == "windows" else "ubuntu")
-        )
         assets = release.get("assets", [])
-        match = next((a for a in assets if suffix in a.get("name", "").lower()), None)
+        match = _select_llama_release_asset(assets, profile)
         if not match:
-            raise RuntimeError(f"No prebuilt llama.cpp release asset found for {suffix}")
+            raise RuntimeError(f"No prebuilt llama.cpp release asset found for {profile.os_name}/{profile.arch}")
         with tempfile.TemporaryDirectory() as tmpdir:
             archive_path = Path(tmpdir) / match["name"]
             with urllib.request.urlopen(match["browser_download_url"], timeout=60) as dl:
@@ -350,8 +384,13 @@ def _download_tier_models(profile: SystemProfile, models_dir: Path, dry_run: boo
                 status = getattr(resp, "status", 200)
                 mode = "ab" if status == 206 and offset > 0 else "wb"
                 total = int(resp.headers.get("Content-Length", "0") or 0)
+                is_resume = status == 206 and offset > 0
+                full_total = (offset + total) if (is_resume and total > 0) else (total or None)
+                completed = offset if is_resume else 0
                 with Progress() as progress:
-                    task = progress.add_task(f"Downloading {spec['filename']}", total=total or None)
+                    task = progress.add_task(
+                        f"Downloading {spec['filename']}", total=full_total, completed=completed
+                    )
                     with part.open(mode) as fh:
                         while True:
                             chunk = resp.read(1024 * 1024)

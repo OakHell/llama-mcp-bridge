@@ -254,7 +254,7 @@ def test_auto_install_prebuilt_yes_extracts_and_updates_ini(tmp_path: Path):
     zip_bytes = buf.getvalue()
 
     release_json = json.dumps(
-        {"assets": [{"name": "llama-ubuntu.zip", "browser_download_url": "https://example.com/llama.zip"}]}
+        {"assets": [{"name": "llama-ubuntu-x64.zip", "browser_download_url": "https://example.com/llama.zip"}]}
     ).encode("utf-8")
 
     resp1 = MagicMock()
@@ -409,3 +409,67 @@ def test_verify_tier_models_reports_ok_and_suggestions_on_404():
     assert len(ok_items) >= 1
     assert len(missing_items) == 1
     assert missing_items[0]["suggestions"][0]["id"] == "Qwen/Alt-GGUF"
+
+
+def test_6gb_vision_deep_uses_vlm_model():
+    import configparser
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.presets import generate_models_ini
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
+    parser = configparser.ConfigParser()
+    parser.read_string(generate_models_ini(profile, models_dir="/models"))
+    assert parser.get("vision-deep", "model") == "/models/MiniCPM-V-4_6-Q4_K_M.gguf"
+    assert parser.get("vision-deep", "mmproj") == "/models/mmproj-model-f16.gguf"
+
+
+def test_select_llama_release_asset_scoring():
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _select_llama_release_asset
+
+    assets = [
+        {"name": "cudart-llama-bin-win-cuda-cu12.2-x64.zip"},
+        {"name": "llama-b4000-bin-win-cpu-x64.zip"},
+        {"name": "llama-b4000-bin-win-cuda-cu12.2-x64.zip"},
+        {"name": "llama-b4000-bin-win-vulkan-arm64.zip"},
+        {"name": "llama-b4000-bin-ubuntu-x64.tar.gz"},
+        {"name": "llama-b4000-bin-ubuntu-vulkan-x64.tar.gz"},
+    ]
+
+    win_nv = SystemProfile("windows", "x86_64", "nvidia", "RTX 3070", 8.0, "sm_86", "windows", "8gb")
+    assert _select_llama_release_asset(assets, win_nv)["name"] == "llama-b4000-bin-win-cuda-cu12.2-x64.zip"
+
+    linux_amd = SystemProfile("linux", "x86_64", "amd", "RX 7600", 8.0, "", "ubuntu", "8gb")
+    assert _select_llama_release_asset(assets, linux_amd)["name"] == "llama-b4000-bin-ubuntu-vulkan-x64.tar.gz"
+
+
+def test_download_tier_models_resumed_progress_totals(tmp_path: Path):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _download_tier_models
+    from llama_mcp_bridge.presets import get_tier_model_specs
+
+    specs = get_tier_model_specs("6gb")
+    first = specs[0]["filename"]
+    for spec in specs[1:]:
+        (tmp_path / spec["filename"]).write_bytes(b"done")
+    (tmp_path / f"{first}.part").write_bytes(b"abc")
+
+    resp = MagicMock()
+    resp.__enter__.return_value = resp
+    resp.status = 206
+    resp.headers = {"Content-Length": "4"}
+    resp.read.side_effect = [b"defg", b""]
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
+    with (
+        patch("llama_mcp_bridge.installer.verify_model_url", return_value=(True, 7)),
+        patch("llama_mcp_bridge.installer.urllib.request.urlopen", return_value=resp),
+        patch("llama_mcp_bridge.installer.Progress") as mock_progress_cls,
+    ):
+        mock_progress = mock_progress_cls.return_value.__enter__.return_value
+        _download_tier_models(profile, tmp_path, dry_run=False)
+
+    mock_progress.add_task.assert_called_once_with(
+        f"Downloading {first}", total=7, completed=3
+    )
