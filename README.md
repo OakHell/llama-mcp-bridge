@@ -32,6 +32,17 @@ llama-mcp-install
 
 Running `llama-mcp-install` with no flags automatically launches the interactive `rich` TUI wizard (or pass `--tui` explicitly) to detect your hardware, audit BYO GPU prerequisites, optionally install `llama-server`, configure background services, and print the ready-to-copy `mcp_config.json` snippet and required GGUF model filenames.
 
+## Agent Self-Bootstrap (`SKILL.md` & `--install-skill`)
+
+Give your coding agent one skill so it can autonomously install, verify, wire, and troubleshoot `llama-mcp-bridge`:
+
+```bash
+llama-mcp-install --install-skill          # auto-detects ~/.claude, ~/.gemini/config, ~/.gemini, ~/.cursor
+llama-mcp-install --install-skill claude   # or: antigravity, gemini, cursor, workspace, or <custom-dir>
+```
+
+The bundled [skills/llama-mcp-setup/SKILL.md](skills/llama-mcp-setup/SKILL.md) encodes the deterministic bootstrap flow (`--yes` -> `--doctor` -> `--configure-client`) and black-box diagnostic commands (`--doctor` and `llama-mcp-ps`). Pass `--skill-link` to symlink instead of copying.
+
 ## Installation & Execution
 
 ### Option 1: Global Install from GitHub (End Users)
@@ -163,7 +174,7 @@ uv run ruff check .
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for shipped releases (`v0.1.0`–`v0.7.0`, including custom `--hf` / `--file` GGUFs, GGUF binary header KV-cache auto-tuning via `--tune-mode`, dynamic `ask_preset` routing, and global `--register` workspace enrolment) and upcoming `v0.8.0` (bundled `skills/llama-mcp-setup/SKILL.md` + `llama-mcp-install --install-skill`).
+See [ROADMAP.md](ROADMAP.md) for all shipped releases (`v0.1.0`–`v0.8.0`), including custom `--hf` / `--file` GGUFs, GGUF binary header KV-cache auto-tuning (`--tune-mode`), dynamic `ask_preset` routing, global `--register` workspace enrolment, and the bundled `llama-mcp-setup` agent skill (`--install-skill`).
 
 ## License
 

@@ -295,7 +295,7 @@ def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
             "llama_mcp_bridge.installer.Prompt.ask",
             side_effect=[str(custom_ws), str(custom_ws / "models"), "moderate", "skip"],
         ),
-        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False, False, False]),
+        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False, False, False, False]),
     ):
         _run_tui_wizard()
 
