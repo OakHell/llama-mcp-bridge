@@ -677,7 +677,12 @@ def _uninstall_bridge(dry_run: bool, yes: bool) -> None:
     elif sys.platform.startswith("linux"):
         systemd_unit = Path.home() / ".config" / "systemd" / "user" / "llama-server.service"
         if shutil.which("systemctl") and Path("/run/systemd/system").exists():
-            subprocess.run(["systemctl", "--user", "disable", "--now", "llama-server.service"], check=False)
+            subprocess.run(
+                ["systemctl", "--user", "disable", "--now", "llama-server.service"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
             systemd_unit.unlink(missing_ok=True)
             subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
         else:

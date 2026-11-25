@@ -143,9 +143,9 @@ def generate_models_ini(
             },
             "model_overrides": {
                 "coder-fast": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
-                "coder": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
-                "coder-long": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
-                "vision-deep": "MiniCPM-V-4_6-Q4_K_M.gguf",
+                "coder": "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
+                "coder-long": "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
+                "vision-deep": "Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf",
                 "vision": "MiniCPM-V-4_6-Q4_K_M.gguf",
                 "reasoner": "granite-4.2-3b-Q4_K_M.gguf",
                 "analyst": "Ministral-3-3B-Reasoning-2512.Q4_K_M.gguf",
@@ -153,7 +153,7 @@ def generate_models_ini(
                 "digest": "LFM3-1.7B-Q8_0.gguf",
             },
             "mmproj_overrides": {
-                "vision-deep": "mmproj-model-f16.gguf",
+                "vision-deep": "mmproj-F16.gguf",
                 "vision": "mmproj-model-f16.gguf",
             },
         },
@@ -301,7 +301,9 @@ _STANDARD_SPECS: list[dict[str, Any]] = [
 
 _COMPACT_6GB_SPECS: list[dict[str, Any]] = [
     {"role": "coder-fast", "filename": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf", "repo": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF", "size_gb": 1.1},
-    {"role": "coder", "filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf", "repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF", "size_gb": 1.1},
+    {"role": "coder", "filename": "qwen2.5-coder-3b-instruct-q4_k_m.gguf", "repo": "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF", "size_gb": 2.0},
+    {"role": "vision-deep", "filename": "Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf", "repo": "unsloth/Qwen2.5-VL-3B-Instruct-GGUF", "size_gb": 1.9},
+    {"role": "vision-deep-mmproj", "filename": "mmproj-F16.gguf", "repo": "unsloth/Qwen2.5-VL-3B-Instruct-GGUF", "size_gb": 1.3},
     {"role": "vision", "filename": "MiniCPM-V-4_6-Q4_K_M.gguf", "repo": "openbmb/MiniCPM-V-4_6-gguf", "size_gb": 0.5},
     {"role": "vision-mmproj", "filename": "mmproj-model-f16.gguf", "repo": "openbmb/MiniCPM-V-4_6-gguf", "size_gb": 1.1},
     {"role": "reasoner", "filename": "granite-4.2-3b-Q4_K_M.gguf", "repo": "ibm-granite/granite-4.2-3b-GGUF", "size_gb": 2.0},
@@ -351,13 +353,16 @@ def get_tier_model_specs(
             f"Unknown preset(s): {', '.join(unknown)}. Valid presets: {', '.join(_VALID_PRESETS)}"
         )
 
+    has_dedicated_vision_deep = any(s["role"] == "vision-deep" for s in specs)
     wanted_roles: set[str] = set()
     for p in presets:
         wanted_roles.add(p)
         if p == "vision":
             wanted_roles.add("vision-mmproj")
         elif p == "vision-deep":
-            wanted_roles.update({"vision-deep-mmproj", "coder", "vision", "vision-mmproj"})
+            wanted_roles.add("vision-deep-mmproj")
+            if not has_dedicated_vision_deep:
+                wanted_roles.add("coder")
         elif p == "coder-long":
             wanted_roles.add("coder")
 

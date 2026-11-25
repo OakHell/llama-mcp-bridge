@@ -86,10 +86,7 @@ def select_presets_interactive(
                 chosen.append(t)
         return chosen
 
-    preset_sizes = {
-        name: sum(s["size_gb"] for s in get_tier_model_specs(profile.tier, presets=[name]))
-        for name in _VALID_PRESETS
-    }
+    preset_sizes = {name: _preset_total_size_gb(profile.tier, name) for name in _VALID_PRESETS}
 
     def _render_selector(cur: int) -> Group:
         table = Table(title=f"{title} (tier={profile.tier})")
@@ -133,10 +130,13 @@ def _configured_presets(models_ini: Path) -> set[str]:
     return {s for s in cp.sections() if s in _VALID_PRESETS}
 
 
+def _preset_total_size_gb(tier: str, preset: str) -> float:
+    return sum(s["size_gb"] for s in get_tier_model_specs(tier, presets=[preset]))
+
+
 def _print_models_list(profile: SystemProfile, models_ini: Path, models_dir: Path) -> None:
     console = Console()
     configured = _configured_presets(models_ini)
-    specs_by_role = {s["role"]: s for s in get_tier_model_specs(profile.tier)}
     table = Table(title=f"llama-mcp-models (tier={profile.tier})")
     table.add_column("Preset", style="bold")
     table.add_column("Configured (models.ini)")
@@ -144,12 +144,15 @@ def _print_models_list(profile: SystemProfile, models_ini: Path, models_dir: Pat
     table.add_column("Size")
     table.add_column("Filename")
     for name in _VALID_PRESETS:
-        spec = specs_by_role.get(name) or specs_by_role.get("coder") or {}
-        fname = spec.get("filename", "-")
-        on_disk = fname != "-" and (models_dir / fname).is_file()
+        p_specs = get_tier_model_specs(profile.tier, presets=[name])
+        base_specs = [s for s in p_specs if not s["role"].endswith("-mmproj")]
+        mmproj_specs = [s for s in p_specs if s["role"].endswith("-mmproj")]
+        base_fname = base_specs[0]["filename"] if base_specs else "-"
+        fname = f"{base_fname} (+ {mmproj_specs[0]['filename']})" if mmproj_specs else base_fname
+        on_disk = bool(p_specs) and all((models_dir / s["filename"]).is_file() for s in p_specs)
         cfg_badge = "[green]YES[/green]" if name in configured else "[dim]NO[/dim]"
         disk_badge = "[green]YES[/green]" if on_disk else "[dim]NO[/dim]"
-        size_str = f"{spec.get('size_gb', '?')} GB" if spec else "-"
+        size_str = f"{_preset_total_size_gb(profile.tier, name):.1f} GB" if p_specs else "-"
         table.add_row(name, cfg_badge, disk_badge, size_str, fname)
     console.print(table)
 

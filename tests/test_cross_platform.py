@@ -372,15 +372,16 @@ def test_tier_model_registry_matches_generated_models_ini():
         parser.read_string(ini_str)
 
         specs = get_tier_model_specs(tier)
-        registry_files = {s["filename"]: s["url"] for s in specs}
+        registry_files = {s["filename"]: s for s in specs}
 
         for section in parser.sections():
             for key in ("model", "mmproj"):
                 if parser.has_option(section, key):
                     basename = Path(parser.get(section, key)).name
                     assert basename in registry_files, f"{basename} missing in {tier} registry"
-                    assert registry_files[basename].startswith("https://huggingface.co/")
-                    assert "/resolve/main/" in registry_files[basename]
+                    assert registry_files[basename]["url"].startswith("https://huggingface.co/")
+                    assert "/resolve/main/" in registry_files[basename]["url"]
+                    assert registry_files[basename]["size_gb"] > 0
 
 
 def test_verify_tier_models_reports_ok_and_suggestions_on_404():
@@ -425,8 +426,8 @@ def test_6gb_vision_deep_uses_vlm_model():
     profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
     parser = configparser.ConfigParser()
     parser.read_string(generate_models_ini(profile, models_dir="/models"))
-    assert parser.get("vision-deep", "model") == "/models/MiniCPM-V-4_6-Q4_K_M.gguf"
-    assert parser.get("vision-deep", "mmproj") == "/models/mmproj-model-f16.gguf"
+    assert parser.get("vision-deep", "model") == "/models/Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf"
+    assert parser.get("vision-deep", "mmproj") == "/models/mmproj-F16.gguf"
 
 
 def test_select_llama_release_asset_scoring():
@@ -1025,3 +1026,52 @@ def test_ps_main_filters_configured_presets(capsys, monkeypatch, tmp_path: Path)
     out = capsys.readouterr().out
     assert "digest" in out
     assert "vision-deep" not in out
+
+
+def test_models_list_includes_mmproj_size_and_filename_and_distinct_6gb_coder(capsys, monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.models_cli import _print_models_list
+
+    monkeypatch.setenv("COLUMNS", "160")
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "ubuntu", "6gb")
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    _print_models_list(profile, tmp_path / "models.ini", models_dir)
+
+    out = capsys.readouterr().out
+    assert "1.6 GB" in out
+    assert "3.2 GB" in out
+    assert "(+ mmproj-model-f16.gguf)" in out
+    assert "(+ mmproj-F16.gguf)" in out
+    assert "1.1 GB" in out
+    assert "2.0 GB" in out
+
+
+def test_uninstall_silences_systemctl_stderr(monkeypatch, tmp_path: Path):
+    import subprocess
+
+    from llama_mcp_bridge.installer import _uninstall_bridge
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    orig_exists = Path.exists
+
+    def fake_exists(self: Path) -> bool:
+        if str(self) == "/run/systemd/system":
+            return True
+        return orig_exists(self)
+
+    with (
+        patch("llama_mcp_bridge.installer.sys.platform", "linux"),
+        patch("llama_mcp_bridge.installer.shutil.which", return_value="/usr/bin/systemctl"),
+        patch.object(Path, "exists", fake_exists),
+        patch("llama_mcp_bridge.installer.subprocess.run") as mock_run,
+    ):
+        _uninstall_bridge(dry_run=False, yes=True)
+
+    disable_calls = [
+        c for c in mock_run.call_args_list if c.args[0] == ["systemctl", "--user", "disable", "--now", "llama-server.service"]
+    ]
+    assert len(disable_calls) == 1
+    assert disable_calls[0].kwargs["stdout"] == subprocess.DEVNULL
+    assert disable_calls[0].kwargs["stderr"] == subprocess.DEVNULL

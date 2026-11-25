@@ -149,3 +149,17 @@ def test_generate_models_ini_selected_presets_cpu():
     assert parser.sections() == ["*", "digest"]
     assert parser.get("*", "n-gpu-layers") == "0"
     assert parser.get("*", "device") == "none"
+
+
+def test_6gb_tier_distinct_coder_and_vision_deep():
+    from llama_mcp_bridge.presets import get_tier_model_specs
+
+    coder_fast = get_tier_model_specs("6gb", presets=["coder-fast"])
+    coder = get_tier_model_specs("6gb", presets=["coder"])
+    vision_deep = get_tier_model_specs("6gb", presets=["vision-deep"])
+
+    assert coder_fast[0]["filename"] == "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
+    assert coder[0]["filename"] == "qwen2.5-coder-3b-instruct-q4_k_m.gguf"
+    assert coder[0]["size_gb"] == 2.0
+    assert {s["filename"] for s in vision_deep} == {"Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf", "mmproj-F16.gguf"}
+    assert round(sum(s["size_gb"] for s in vision_deep), 1) == 3.2
