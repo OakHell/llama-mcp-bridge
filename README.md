@@ -2,15 +2,6 @@
 
 A cross-platform Model Context Protocol (MCP) bridge connecting MCP clients to a local `llama-server` instance.
 
-## Quick Start (Guided Setup Wizard)
-
-Install the package globally and run the interactive setup wizard—it detects your GPU/VRAM, checks BYO drivers/SDKs, optionally downloads or builds `llama-server`, configures background startup, and outputs your ready-to-paste `mcp_config.json`:
-
-```bash
-uv tool install git+[https://github.com/OakHell/llama-mcp-bridge](https://github.com/OakHell/llama-mcp-bridge)
-uv tool update-shell
-llama-mcp-install
-
 ## Architecture & Features
 
 - **Specialist MCP Tools:** 9 dedicated tools (`ask_digest`, `ask_coder_fast`, `ask_coder`, `ask_coder_long`, `ask_vision`, `ask_vision_deep`, `ask_reasoner`, `ask_analyst`, `ask_generalist`) routed to tuned local GGUF presets.
