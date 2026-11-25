@@ -22,7 +22,13 @@ from rich.table import Table
 
 from llama_mcp_bridge.config import get_config_home, load_config
 from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
-from llama_mcp_bridge.presets import generate_models_ini, get_tier_model_specs
+from llama_mcp_bridge.presets import (
+    generate_models_ini,
+    get_tier_model_specs,
+    search_hf_gguf_models,
+    verify_model_url,
+    verify_tier_models,
+)
 
 
 def _macos_release_asset(arch: str) -> str:
@@ -324,6 +330,15 @@ def _download_tier_models(profile: SystemProfile, models_dir: Path, dry_run: boo
             print(f"[DRY-RUN] Would download {spec['filename']} ({spec['size_gb']} GB) from {spec['url']}")
             continue
 
+        ok, _ = verify_model_url(spec["url"])
+        if not ok:
+            print(f"WARNING: {spec['filename']} not found at {spec['url']}; skipping.")
+            stem = spec["filename"].replace(".gguf", "").split("-")[0]
+            alts = search_hf_gguf_models(stem, limit=3)
+            if alts:
+                print(f"  Suggested HF GGUF alternatives: {', '.join(a['id'] for a in alts)}")
+            continue
+
         part = models_dir / f"{spec['filename']}.part"
         offset = part.stat().st_size if part.exists() else 0
         req = urllib.request.Request(spec["url"])
@@ -452,10 +467,34 @@ def main() -> None:
     parser.add_argument("--install-service", action="store_true", help="Generate service unit file.")
     parser.add_argument("-y", "--yes", action="store_true", help="Auto-confirm llama-server installation.")
     parser.add_argument("--download-models", action="store_true", help="Download curated GGUF models for tier.")
+    parser.add_argument("--verify-models", action="store_true", help="Verify Hugging Face model URLs.")
+    parser.add_argument("--tier", type=str, help="Target VRAM tier for --verify-models.")
     parser.add_argument("--tui", action="store_true", help="Launch interactive rich TUI wizard.")
     parser.add_argument("--models-dir", type=str, help="Path to models directory.")
 
     args = parser.parse_args()
+    if args.verify_models:
+        console = Console()
+        results = verify_tier_models(args.tier)
+        table = Table(title="Hugging Face Model Verification")
+        table.add_column("Tier")
+        table.add_column("Filename")
+        table.add_column("Status")
+        table.add_column("Details")
+        any_missing = False
+        for item in results:
+            if item["ok"]:
+                size_mb = f"{item['size_bytes'] / (1024**2):.1f} MB" if item["size_bytes"] else "OK"
+                table.add_row(item["tier"], item["filename"], "[green]OK[/green]", size_mb)
+            else:
+                any_missing = True
+                sugg = ", ".join(s["id"] for s in item["suggestions"]) or "none"
+                table.add_row(item["tier"], item["filename"], "[red]MISSING[/red]", f"Try: {sugg}")
+        console.print(table)
+        if any_missing:
+            sys.exit(1)
+        return
+
     if args.tui or (len(sys.argv) == 1 and sys.stdin.isatty()):
         _run_tui_wizard()
         return

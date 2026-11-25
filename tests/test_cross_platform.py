@@ -332,7 +332,10 @@ def test_download_tier_models_resumes_part_with_range(tmp_path: Path):
     resp.read.side_effect = [b"def", b""]
 
     profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "8gb")
-    with patch("llama_mcp_bridge.installer.urllib.request.urlopen", return_value=resp) as mock_url:
+    with (
+        patch("llama_mcp_bridge.installer.verify_model_url", return_value=(True, 6)),
+        patch("llama_mcp_bridge.installer.urllib.request.urlopen", return_value=resp) as mock_url,
+    ):
         _download_tier_models(profile, tmp_path, dry_run=False)
 
     req_sent = mock_url.call_args.args[0]
@@ -373,3 +376,36 @@ def test_tier_model_registry_matches_generated_models_ini():
                     assert basename in registry_files, f"{basename} missing in {tier} registry"
                     assert registry_files[basename].startswith("https://huggingface.co/")
                     assert "/resolve/main/" in registry_files[basename]
+
+
+def test_verify_tier_models_reports_ok_and_suggestions_on_404():
+    import json
+    import urllib.error
+
+    from llama_mcp_bridge.presets import verify_tier_models
+
+    ok_resp = MagicMock()
+    ok_resp.__enter__.return_value = ok_resp
+    ok_resp.status = 200
+    ok_resp.headers = {"X-Linked-Size": "1048576"}
+
+    search_resp = MagicMock()
+    search_resp.__enter__.return_value = search_resp
+    search_resp.read.return_value = json.dumps([{"id": "Qwen/Alt-GGUF", "downloads": 100}]).encode("utf-8")
+
+    def fake_urlopen(req, timeout=10.0):
+        url = req if isinstance(req, str) else req.full_url
+        if "api/models" in url:
+            return search_resp
+        if "MiniCPM-V-2_6-Q4_K_M" in url:
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        return ok_resp
+
+    with patch("llama_mcp_bridge.presets.urllib.request.urlopen", side_effect=fake_urlopen):
+        results = verify_tier_models("6gb")
+
+    ok_items = [r for r in results if r["ok"]]
+    missing_items = [r for r in results if not r["ok"]]
+    assert len(ok_items) >= 1
+    assert len(missing_items) == 1
+    assert missing_items[0]["suggestions"][0]["id"] == "Qwen/Alt-GGUF"

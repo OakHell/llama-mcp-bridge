@@ -1,5 +1,9 @@
 """VRAM-tier presets and models.ini generation for llama-mcp-bridge."""
 
+import json
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Any
 
 from .hardware import SystemProfile
@@ -284,3 +288,60 @@ TIER_MODEL_REGISTRY: dict[str, list[dict[str, Any]]] = {
 def get_tier_model_specs(tier: str) -> list[dict[str, Any]]:
     """Return curated GGUF model specs for the given VRAM tier."""
     return list(TIER_MODEL_REGISTRY.get(tier, TIER_MODEL_REGISTRY["8gb"]))
+
+
+def verify_model_url(url: str, timeout: float = 10.0) -> tuple[bool, int | None]:
+    """Check whether a Hugging Face model URL exists via HTTP HEAD."""
+    req = urllib.request.Request(url, method="HEAD")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status = getattr(resp, "status", 200)
+            if status in (200, 302):
+                raw_size = resp.headers.get("X-Linked-Size") or resp.headers.get("Content-Length")
+                size_bytes = int(raw_size) if raw_size and raw_size.isdigit() else None
+                return True, size_bytes
+    except (urllib.error.URLError, urllib.error.HTTPError, ValueError):
+        return False, None
+    return False, None
+
+
+def search_hf_gguf_models(query: str, limit: int = 5, timeout: float = 10.0) -> list[dict[str, Any]]:
+    """Query Hugging Face API for live GGUF model alternatives."""
+    encoded = urllib.parse.quote(query)
+    api_url = (
+        f"https://huggingface.co/api/models?search={encoded}"
+        f"&filter=gguf&sort=downloads&direction=-1&limit={limit}"
+    )
+    try:
+        with urllib.request.urlopen(api_url, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if isinstance(data, list):
+                return [{"id": item.get("id", ""), "downloads": item.get("downloads", 0)} for item in data]
+    except (urllib.error.URLError, urllib.error.HTTPError, ValueError):
+        return []
+    return []
+
+
+def verify_tier_models(tier: str | None = None) -> list[dict[str, Any]]:
+    """Verify model URLs for one tier (or all tiers) and return status + suggestions."""
+    tiers = [tier] if tier else list(TIER_MODEL_REGISTRY.keys())
+    results: list[dict[str, Any]] = []
+    for t in tiers:
+        for spec in get_tier_model_specs(t):
+            ok, size_bytes = verify_model_url(spec["url"])
+            suggestions: list[dict[str, Any]] = []
+            if not ok:
+                stem = spec["filename"].replace(".gguf", "").split("-")[0]
+                suggestions = search_hf_gguf_models(stem, limit=3)
+            results.append(
+                {
+                    "tier": t,
+                    "role": spec["role"],
+                    "filename": spec["filename"],
+                    "url": spec["url"],
+                    "ok": ok,
+                    "size_bytes": size_bytes,
+                    "suggestions": suggestions,
+                }
+            )
+    return results
