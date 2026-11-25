@@ -140,6 +140,10 @@ uv run pytest -v
 uv run ruff check .
 ```
 
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for shipped `v0.1.0` / `v0.2.0` milestones and upcoming `v0.3.0` plans.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
