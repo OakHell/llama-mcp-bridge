@@ -95,7 +95,7 @@ class LlamaSupervisor:
         """
         try:
             binary_bin = getattr(self.config, "llama_server_bin", "") or getattr(self.config, "binary", "") or "llama-server"
-            if (sys.platform == "win32" or os.name == "nt") and not binary_bin.lower().endswith(".exe"):
+            if sys.platform == "win32" and not binary_bin.lower().endswith(".exe"):
                 binary_bin = f"{binary_bin}.exe"
             cmd = [binary_bin]
             cmd.extend(getattr(self.config, "extra_args", []))

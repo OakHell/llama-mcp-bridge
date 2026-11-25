@@ -71,7 +71,7 @@ def get_config_home() -> Path:
     if env_home:
         return Path(os.path.expandvars(env_home)).expanduser()
 
-    if sys.platform == "win32" or os.name == "nt":
+    if sys.platform == "win32":
         local_app_data = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(os.path.expandvars(local_app_data)).expanduser() / "llama-mcp-bridge"
 

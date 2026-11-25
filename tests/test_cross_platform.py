@@ -68,7 +68,6 @@ def test_supervisor_windows_popen_and_stop():
     mock_proc.poll.return_value = None
 
     with (
-        patch("llama_mcp_bridge.supervisor.os.name", "nt"),
         patch("llama_mcp_bridge.supervisor.sys.platform", "win32"),
         patch("shutil.which", return_value="C:\\bin\\llama-server.exe"),
         patch("llama_mcp_bridge.supervisor.subprocess.Popen", return_value=mock_proc) as mock_popen,
@@ -95,7 +94,6 @@ def test_supervisor_posix_popen():
     mock_proc.poll.return_value = None
 
     with (
-        patch("llama_mcp_bridge.supervisor.os.name", "posix"),
         patch("llama_mcp_bridge.supervisor.sys.platform", "linux"),
         patch("shutil.which", return_value="/usr/bin/llama-server"),
         patch("llama_mcp_bridge.supervisor.subprocess.Popen", return_value=mock_proc) as mock_popen,
@@ -111,10 +109,7 @@ def test_config_home_posix_default_never_mnt_ai(monkeypatch):
     from llama_mcp_bridge.config import get_config_home
 
     monkeypatch.delenv("LLAMA_MCP_HOME", raising=False)
-    with (
-        patch("llama_mcp_bridge.config.sys.platform", "linux"),
-        patch("llama_mcp_bridge.config.os.name", "posix"),
-    ):
+    with patch("llama_mcp_bridge.config.sys.platform", "linux"):
         home = get_config_home()
     assert home == Path.home() / ".llama-mcp-bridge"
     assert "/mnt/ai" not in str(home)
