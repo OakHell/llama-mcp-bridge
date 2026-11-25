@@ -13,6 +13,7 @@ import tempfile
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -386,9 +387,14 @@ def _verify_and_finalize_part(part: Path, target: Path, filename: str, expected_
     part.replace(target)
 
 
-def _download_tier_models(profile: SystemProfile, models_dir: Path, dry_run: bool = False) -> None:
+def _download_tier_models(
+    profile: SystemProfile,
+    models_dir: Path,
+    dry_run: bool = False,
+    presets: Sequence[str] | None = None,
+) -> None:
     """Download curated GGUF models for the detected tier with .part resume support."""
-    specs = get_tier_model_specs(profile.tier)
+    specs = get_tier_model_specs(profile.tier, presets=presets)
     models_dir.mkdir(parents=True, exist_ok=True)
 
     for spec in specs:
@@ -741,6 +747,11 @@ def _run_tui_wizard() -> None:
         default=False,
     ):
         _download_tier_models(profile, models_dir, dry_run=False)
+    elif Confirm.ask(
+        "Download only the lightweight 'digest' model (~0.8 GB) instead?",
+        default=False,
+    ):
+        _download_tier_models(profile, models_dir, dry_run=False, presets=["digest"])
 
     bridge_ini = workspace / "bridge.ini"
     if not bridge_ini.exists():
@@ -782,7 +793,13 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Print planned actions without executing.")
     parser.add_argument("--install-service", action="store_true", help="Generate service unit file.")
     parser.add_argument("-y", "--yes", action="store_true", help="Auto-confirm llama-server installation.")
-    parser.add_argument("--download-models", action="store_true", help="Download curated GGUF models for tier.")
+    parser.add_argument(
+        "--download-models",
+        nargs="*",
+        default=None,
+        metavar="PRESET",
+        help="Download curated GGUF models for tier (optionally filter by preset names).",
+    )
     parser.add_argument("--verify-models", action="store_true", help="Verify Hugging Face model URLs.")
     parser.add_argument("--tier", type=str, help="Target VRAM tier for --verify-models.")
     parser.add_argument(
@@ -860,7 +877,7 @@ def main() -> None:
     if args.install_service:
         _generate_service_file(args.dry_run)
 
-    if args.download_models and (
+    if args.download_models is not None and (
         args.dry_run
         or args.yes
         or (
@@ -868,7 +885,7 @@ def main() -> None:
             and input(f"Download curated GGUF models into {models_dir}? [y/N]: ").strip().lower() in ("y", "yes")
         )
     ):
-        _download_tier_models(profile, models_dir, dry_run=args.dry_run)
+        _download_tier_models(profile, models_dir, dry_run=args.dry_run, presets=args.download_models)
 
     if args.dry_run:
         print(f"[DRY-RUN] Would write models.ini ({len(ini_content)} bytes) to {home / 'models.ini'}")

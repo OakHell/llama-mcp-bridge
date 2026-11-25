@@ -76,7 +76,7 @@ uv run pytest -v
 | `--mode system-bin` | Uses an existing `llama-server` binary on `PATH`. |
 | `--dry-run` | Prints planned actions without writing files or executing subprocesses. |
 | `-y`, `--yes` | Auto-confirms `llama-server` installation when undetected. |
-| `--download-models` | Downloads curated GGUF starter-pack models for your detected tier (resumable `.part` downloads). |
+| `--download-models [PRESET ...]` | Downloads curated GGUF starter-pack models for your detected tier, or only specific presets (e.g. `--download-models digest` for lightweight/CPU-only setups). |
 | `--verify-models` | Verifies Hugging Face URLs for `--tier` (or all tiers) and suggests live GGUF alternatives on 404. |
 | `--tier` | Target VRAM tier (`6gb`, `8gb`, `12gb`, `16gb`, `24gb+`) for `--verify-models`. |
 | `--residency` | Memory residency profile (`stingy`, `moderate`, `snappy`; default `moderate`). |

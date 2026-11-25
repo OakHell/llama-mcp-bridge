@@ -5,6 +5,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Sequence
 from typing import Any
 
 from .hardware import SystemProfile
@@ -314,9 +315,44 @@ TIER_MODEL_REGISTRY: dict[str, list[dict[str, Any]]] = {
 }
 
 
-def get_tier_model_specs(tier: str) -> list[dict[str, Any]]:
-    """Return curated GGUF model specs for the given VRAM tier."""
-    return list(TIER_MODEL_REGISTRY.get(tier, TIER_MODEL_REGISTRY["8gb"]))
+_VALID_PRESETS = (
+    "digest",
+    "coder-fast",
+    "coder",
+    "coder-long",
+    "vision",
+    "vision-deep",
+    "reasoner",
+    "analyst",
+    "generalist",
+)
+
+
+def get_tier_model_specs(
+    tier: str, presets: Sequence[str] | None = None
+) -> list[dict[str, Any]]:
+    """Return curated GGUF model specs for the given VRAM tier, optionally filtered by presets."""
+    specs = list(TIER_MODEL_REGISTRY.get(tier, TIER_MODEL_REGISTRY["8gb"]))
+    if not presets:
+        return specs
+
+    unknown = [p for p in presets if p not in _VALID_PRESETS]
+    if unknown:
+        raise ValueError(
+            f"Unknown preset(s): {', '.join(unknown)}. Valid presets: {', '.join(_VALID_PRESETS)}"
+        )
+
+    wanted_roles: set[str] = set()
+    for p in presets:
+        wanted_roles.add(p)
+        if p == "vision":
+            wanted_roles.add("vision-mmproj")
+        elif p == "vision-deep":
+            wanted_roles.update({"vision-deep-mmproj", "coder", "vision", "vision-mmproj"})
+        elif p == "coder-long":
+            wanted_roles.add("coder")
+
+    return [s for s in specs if s["role"] in wanted_roles]
 
 
 def probe_model_metadata(url: str, timeout: float = 5.0) -> tuple[bool, int | None, str | None]:

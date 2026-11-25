@@ -290,7 +290,7 @@ def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
             "llama_mcp_bridge.installer.Prompt.ask",
             side_effect=[str(custom_ws), str(custom_ws / "models"), "moderate", "skip"],
         ),
-        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False, False]),
+        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False, False, False]),
     ):
         _run_tui_wizard()
 
@@ -760,3 +760,37 @@ def test_uninstall_dry_run_leaves_everything_untouched(monkeypatch, tmp_path: Pa
     mock_run.assert_not_called()
     assert (tmp_path / "bin" / "llama-server").exists()
     assert (tmp_path / "bridge.ini").exists()
+
+
+def test_download_tier_models_selective_digest_only(tmp_path: Path):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _download_tier_models
+
+    payload = b"digest-gguf"
+    get_resp = MagicMock()
+    get_resp.__enter__.return_value = get_resp
+    get_resp.status = 200
+    get_resp.headers = {"Content-Length": str(len(payload))}
+    get_resp.read.side_effect = [payload, b""]
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
+    with (
+        patch("llama_mcp_bridge.installer.probe_model_metadata", return_value=(True, len(payload), None)),
+        patch("llama_mcp_bridge.installer.urllib.request.urlopen", return_value=get_resp) as mock_url,
+    ):
+        _download_tier_models(profile, tmp_path, dry_run=False, presets=["digest"])
+
+    mock_url.assert_called_once()
+    assert (tmp_path / "LFM3-1.7B-Q8_0.gguf").read_bytes() == payload
+    assert not (tmp_path / "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf").exists()
+
+
+def test_download_tier_models_invalid_preset_raises(tmp_path: Path):
+    import pytest
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _download_tier_models
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
+    with pytest.raises(ValueError, match="Unknown preset"):
+        _download_tier_models(profile, tmp_path, dry_run=False, presets=["nonexistent"])
