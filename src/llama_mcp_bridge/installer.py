@@ -1,8 +1,10 @@
 """Cross-platform installer CLI for llama-mcp-bridge."""
 
 import argparse
-import os
 import platform
+import shutil
+import subprocess
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
@@ -31,38 +33,52 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> None:
         raise ValueError(f"Unsupported archive format: {archive_path}")
 
 
-def _generate_service_file(dry_run: bool) -> None:
-    """Generate an OS-specific service unit file."""
-    os_name = platform.system()
-    home = get_config_home()
-
+def _install_reboot_crontab(server_bin: str, models_ini: str, host: str, port: int, dry_run: bool) -> None:
+    """Install a deduplicated @reboot user crontab entry tagged with # llama-mcp-bridge."""
+    entry = (
+        f"@reboot nohup {server_bin} --models-preset {models_ini} "
+        f"--host {host} --port {port} >/dev/null 2>&1 & # llama-mcp-bridge"
+    )
     if dry_run:
-        print(f"[DRY-RUN] Would generate service file for {os_name} in {home}")
+        print(f"[DRY-RUN] Would install crontab entry:\n{entry}")
         return
 
-    home.mkdir(parents=True, exist_ok=True)
-    if os_name == "Linux":
-        cfg = load_config()
-        systemd_dir = Path.home() / ".config" / "systemd" / "user"
-        systemd_dir.mkdir(parents=True, exist_ok=True)
-        service_path = systemd_dir / "llama-server.service"
-        server_bin = cfg.llama_server_bin or "llama-server"
-        service_path.write_text(
-            "[Unit]\n"
-            "Description=llama.cpp Router Server for llama-mcp-bridge\n"
-            "After=network.target\n\n"
-            "[Service]\n"
-            f"WorkingDirectory={cfg.workspace}\n"
-            f"ExecStart={server_bin} --models-preset {cfg.models_ini} "
+    res = subprocess.run(["crontab", "-l"], capture_output=True, text=True, check=False)
+    existing = res.stdout.splitlines() if res.returncode == 0 else []
+    filtered = [line for line in existing if "# llama-mcp-bridge" not in line]
+    filtered.append(entry)
+    subprocess.run(["crontab", "-"], input="\n".join(filtered) + "\n", text=True, check=False)
+
+
+def _generate_service_file(dry_run: bool) -> None:
+    """Generate an OS-specific service unit or startup task."""
+    cfg = load_config()
+    server_bin = cfg.llama_server_bin or "llama-server"
+
+    if sys.platform == "win32":
+        workspace = Path(cfg.workspace)
+        bat_path = workspace / "start-llama-server.bat"
+        bat_content = (
+            f'start "" /B "{server_bin}" --models-preset "{cfg.models_ini}" '
             f"--host {cfg.host} --port {cfg.port}\n"
-            "Restart=on-failure\n\n"
-            "[Install]\n"
-            "WantedBy=default.target\n",
-            encoding="utf-8",
         )
-    elif os_name == "Darwin":
+        schtasks_cmd = [
+            "schtasks", "/Create", "/F", "/TN", "LlamaServer",
+            "/SC", "ONLOGON", "/TR", f'"{bat_path}"',
+        ]
+        if dry_run:
+            print(f"[DRY-RUN] Would write {bat_path}:\n{bat_content}")
+            print(f"[DRY-RUN] Would run: {' '.join(schtasks_cmd)}")
+            return
+        workspace.mkdir(parents=True, exist_ok=True)
+        bat_path.write_text(bat_content, encoding="utf-8")
+        subprocess.run(schtasks_cmd, check=False)
+        return
+
+    if sys.platform == "darwin" or platform.system() == "Darwin":
+        home = get_config_home()
         plist_path = home / "com.llama-mcp-bridge.plist"
-        plist_path.write_text(
+        plist_xml = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
             '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
@@ -80,15 +96,85 @@ def _generate_service_file(dry_run: bool) -> None:
             "  <key>RunAtLoad</key>\n"
             "  <true/>\n"
             "</dict>\n"
-            "</plist>\n",
-            encoding="utf-8",
+            "</plist>\n"
         )
-    else:
-        hint_path = home / "install_windows_hint.txt"
-        hint_path.write_text(
-            "Create Task Scheduler task: Run 'python -m llama_mcp_bridge'.\n",
-            encoding="utf-8",
+        if dry_run:
+            print(f"[DRY-RUN] Would write {plist_path}")
+            return
+        home.mkdir(parents=True, exist_ok=True)
+        plist_path.write_text(plist_xml, encoding="utf-8")
+        return
+
+    if sys.platform.startswith("linux"):
+        if shutil.which("systemctl") and Path("/run/systemd/system").exists():
+            systemd_dir = Path.home() / ".config" / "systemd" / "user"
+            service_path = systemd_dir / "llama-server.service"
+            unit = (
+                "[Unit]\n"
+                "Description=llama.cpp Router Server for llama-mcp-bridge\n"
+                "After=network.target\n\n"
+                "[Service]\n"
+                f"WorkingDirectory={cfg.workspace}\n"
+                f"ExecStart={server_bin} --models-preset {cfg.models_ini} "
+                f"--host {cfg.host} --port {cfg.port}\n"
+                "Restart=on-failure\n\n"
+                "[Install]\n"
+                "WantedBy=default.target\n"
+            )
+            if dry_run:
+                print(f"[DRY-RUN] Would write {service_path}:\n{unit}")
+                return
+            systemd_dir.mkdir(parents=True, exist_ok=True)
+            service_path.write_text(unit, encoding="utf-8")
+            return
+
+        _install_reboot_crontab(server_bin, cfg.models_ini, cfg.host, cfg.port, dry_run)
+        print(
+            "\nOpenRC reference (/etc/init.d/llama-server):\n"
+            f'command="{server_bin}"\n'
+            f'command_args="--models-preset {cfg.models_ini} --host {cfg.host} --port {cfg.port}"\n'
+            "command_background=true\n"
         )
+        return
+
+    if sys.platform.startswith(("freebsd", "openbsd", "netbsd")):
+        _install_reboot_crontab(server_bin, cfg.models_ini, cfg.host, cfg.port, dry_run)
+        print(
+            "\nFreeBSD rc.d template (/usr/local/etc/rc.d/llama_server via daemon(8)):\n"
+            'command="/usr/sbin/daemon"\n'
+            f'command_args="-f -P /var/run/llama_server.pid {server_bin} '
+            f'--models-preset {cfg.models_ini} --host {cfg.host} --port {cfg.port}"\n'
+        )
+        return
+
+    if sys.platform == "darwin" or platform.system() == "Darwin":
+        home = get_config_home()
+        plist_path = home / "com.llama-mcp-bridge.plist"
+        plist_xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+            '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+            '<plist version="1.0">\n'
+            "<dict>\n"
+            "  <key>Label</key>\n"
+            "  <string>com.llama-mcp-bridge</string>\n"
+            "  <key>ProgramArguments</key>\n"
+            "  <array>\n"
+            "    <string>/usr/bin/env</string>\n"
+            "    <string>python3</string>\n"
+            "    <string>-m</string>\n"
+            "    <string>llama_mcp_bridge</string>\n"
+            "  </array>\n"
+            "  <key>RunAtLoad</key>\n"
+            "  <true/>\n"
+            "</dict>\n"
+            "</plist>\n"
+        )
+        if dry_run:
+            print(f"[DRY-RUN] Would write {plist_path}")
+            return
+        home.mkdir(parents=True, exist_ok=True)
+        plist_path.write_text(plist_xml, encoding="utf-8")
 
 
 def main() -> None:
@@ -100,21 +186,9 @@ def main() -> None:
         default="prebuilt",
         help="Installation mode.",
     )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print planned actions without executing.",
-    )
-    parser.add_argument(
-        "--install-service",
-        action="store_true",
-        help="Generate service unit file.",
-    )
-    parser.add_argument(
-        "--models-dir",
-        type=str,
-        help="Path to models directory.",
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Print planned actions without executing.")
+    parser.add_argument("--install-service", action="store_true", help="Generate service unit file.")
+    parser.add_argument("--models-dir", type=str, help="Path to models directory.")
 
     args = parser.parse_args()
     home = get_config_home()

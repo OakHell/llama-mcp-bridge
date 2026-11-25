@@ -94,13 +94,13 @@ Relative paths in `bridge.ini` (`models_dir`, `models_ini`, `llama_server_bin`) 
 | `ask_analyst` | Deep technical auditing and edge-case analysis |
 | `ask_generalist` | General technical writing and synthesis |
 
-## Running Alongside `systemd` on Linux
+## Service Installation (`--install-service`)
 
-```bash
-llama-mcp-install --mode system-bin --install-service
-systemctl --user daemon-reload
-systemctl --user enable --now llama-server.service
-```
+- **Linux (`systemd`):** Writes `~/.config/systemd/user/llama-server.service` when `systemd` is active (`systemctl --user enable --now llama-server.service`).
+- **Linux (non-`systemd` / Alpine / Void / Gentoo):** Installs a deduplicated `@reboot` user crontab entry (`# llama-mcp-bridge`) and prints an OpenRC reference snippet.
+- **macOS (`launchd`):** Writes `com.llama-mcp-bridge.plist` in `LLAMA_MCP_HOME`.
+- **Windows:** Writes `<workspace>/start-llama-server.bat` and registers a `LlamaServer` logon task via `schtasks`.
+- **BSD (FreeBSD / OpenBSD / NetBSD):** Installs a deduplicated `@reboot` user crontab entry (`# llama-mcp-bridge`) and prints a FreeBSD `rc.d` (`daemon(8)`) template.
 
 ## Development
 
@@ -108,3 +108,7 @@ systemctl --user enable --now llama-server.service
 uv run pytest -v
 uv run ruff check .
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).

@@ -166,3 +166,44 @@ def test_bridge_example_ini_parity(monkeypatch, tmp_path: Path):
     assert cfg.auto_spawn is True
     assert cfg.health_timeout_s == 60
     assert cfg.request_timeout_s == 180
+
+
+def test_windows_service_bat_and_schtasks(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import _generate_service_file
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    with (
+        patch("llama_mcp_bridge.installer.sys.platform", "win32"),
+        patch("llama_mcp_bridge.config.sys.platform", "win32"),
+        patch("llama_mcp_bridge.installer.subprocess.run") as mock_run,
+    ):
+        _generate_service_file(dry_run=False)
+
+    bat_path = tmp_path / "start-llama-server.bat"
+    assert bat_path.exists()
+    assert "--models-preset" in bat_path.read_text(encoding="utf-8")
+    mock_run.assert_called_once()
+    assert mock_run.call_args.args[0][0] == "schtasks"
+
+
+def test_non_systemd_linux_and_bsd_crontab_dedup(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import _generate_service_file
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    existing_cron = "0 * * * * /usr/bin/backup\n@reboot old # llama-mcp-bridge\n"
+
+    for plat in ("linux", "freebsd14"):
+        with (
+            patch("llama_mcp_bridge.installer.sys.platform", plat),
+            patch("llama_mcp_bridge.installer.shutil.which", return_value=None),
+            patch("llama_mcp_bridge.installer.subprocess.run") as mock_run,
+        ):
+            mock_run.side_effect = [
+                MagicMock(returncode=0, stdout=existing_cron),
+                MagicMock(returncode=0),
+            ]
+            _generate_service_file(dry_run=False)
+
+        written_cron = mock_run.call_args_list[1].kwargs["input"]
+        assert written_cron.count("# llama-mcp-bridge") == 1
+        assert "/usr/bin/backup" in written_cron
