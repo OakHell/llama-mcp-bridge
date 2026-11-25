@@ -7,6 +7,7 @@ reference implementation.
 
 import configparser
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,9 +16,11 @@ from pathlib import Path
 class BridgeConfig:
     """Configuration settings for the Llama MCP Bridge."""
 
+    workspace: str = ""
     server_url: str = "http://127.0.0.1:8080/v1/chat/completions"
     host: str = "127.0.0.1"
     port: int = 8080
+    models_dir: str = ""
     models_ini: str = ""
     llama_server_bin: str = ""
     auto_spawn: bool = True
@@ -56,20 +59,31 @@ class BridgeConfig:
     gitignore_paths: list[str] = field(default_factory=list)
 
 
-def _get_config_home() -> Path:
-    """Determine the configuration home directory."""
+def get_config_home() -> Path:
+    """Determine the canonical configuration home directory.
+
+    Precedence:
+    1. ``LLAMA_MCP_HOME`` environment variable (with ``~`` and env-var expansion).
+    2. Windows: ``%LOCALAPPDATA%\\llama-mcp-bridge`` (fallback ``~/AppData/Local/llama-mcp-bridge``).
+    3. POSIX (Linux, macOS, FreeBSD): ``~/.llama-mcp-bridge``.
+    """
     env_home = os.environ.get("LLAMA_MCP_HOME")
     if env_home:
-        return Path(env_home).expanduser()
+        return Path(os.path.expandvars(env_home)).expanduser()
 
-    standard_home = Path.home() / ".config" / "llama-mcp-bridge"
-    if standard_home.exists():
-        return standard_home
+    if sys.platform == "win32" or os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(os.path.expandvars(local_app_data)).expanduser() / "llama-mcp-bridge"
 
-    if Path("/mnt/ai/models.ini").exists():
-        return Path("/mnt/ai")
+    return Path.home() / ".llama-mcp-bridge"
 
-    return standard_home
+
+def resolve_path(raw: str, workspace: Path) -> Path:
+    """Expand ``~`` and env vars, resolving relative paths against ``workspace``."""
+    expanded = Path(os.path.expandvars(raw)).expanduser()
+    if expanded.is_absolute():
+        return expanded
+    return workspace / expanded
 
 
 def _load_ini_config(config_path: Path) -> dict[str, str]:
@@ -91,16 +105,13 @@ def _load_ini_config(config_path: Path) -> dict[str, str]:
 
 
 def load_config() -> BridgeConfig:
-    """Load and merge configuration from multiple sources."""
-    config_home = _get_config_home()
+    """Load and merge configuration from bridge.ini and defaults."""
+    config_home = get_config_home()
     bridge_ini_path = config_home / "bridge.ini"
-    models_ini_path = Path("/mnt/ai/models.ini")
 
     config_dict: dict[str, str] = {}
     if bridge_ini_path.exists():
         config_dict.update(_load_ini_config(bridge_ini_path))
-    if models_ini_path.exists():
-        config_dict.update(_load_ini_config(models_ini_path))
 
     config = BridgeConfig()
     int_fields = {
@@ -129,5 +140,19 @@ def load_config() -> BridgeConfig:
                     setattr(config, key, value)
             except (ValueError, TypeError):
                 pass
+
+    workspace = resolve_path(config.workspace, config_home) if config.workspace else config_home
+    config.workspace = str(workspace)
+    config.models_dir = str(
+        resolve_path(config.models_dir, workspace) if config.models_dir else workspace / "models"
+    )
+    config.models_ini = str(
+        resolve_path(config.models_ini, workspace) if config.models_ini else workspace / "models.ini"
+    )
+    if config.llama_server_bin:
+        bin_path = str(resolve_path(config.llama_server_bin, workspace))
+        if (sys.platform == "win32" or os.name == "nt") and not bin_path.lower().endswith(".exe"):
+            bin_path = f"{bin_path}.exe"
+        config.llama_server_bin = bin_path
 
     return config

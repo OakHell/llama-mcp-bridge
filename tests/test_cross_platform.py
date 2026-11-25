@@ -105,3 +105,47 @@ def test_supervisor_posix_popen():
         assert cmd[0] == "llama-server"
         kwargs = mock_popen.call_args.kwargs
         assert kwargs.get("start_new_session") is True or kwargs.get("preexec_fn") is not None
+
+
+def test_config_home_posix_default_never_mnt_ai(monkeypatch):
+    from llama_mcp_bridge.config import get_config_home
+
+    monkeypatch.delenv("LLAMA_MCP_HOME", raising=False)
+    with (
+        patch("llama_mcp_bridge.config.sys.platform", "linux"),
+        patch("llama_mcp_bridge.config.os.name", "posix"),
+    ):
+        home = get_config_home()
+    assert home == Path.home() / ".llama-mcp-bridge"
+    assert "/mnt/ai" not in str(home)
+
+
+def test_config_home_windows_localappdata(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.config import get_config_home
+
+    monkeypatch.delenv("LLAMA_MCP_HOME", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "LocalAppData"))
+    with patch("llama_mcp_bridge.config.sys.platform", "win32"):
+        home = get_config_home()
+    assert home == tmp_path / "LocalAppData" / "llama-mcp-bridge"
+
+
+def test_load_config_custom_workspace_and_relative_paths(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.config import load_config
+
+    cfg_home = tmp_path / "cfg"
+    cfg_home.mkdir()
+    ws = tmp_path / "my_workspace"
+    (cfg_home / "bridge.ini").write_text(
+        f"[bridge]\nworkspace = {ws}\nmodels_dir = custom_models\nllama_server_bin = bin/llama-server\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(cfg_home))
+
+    with patch("llama_mcp_bridge.config.sys.platform", "win32"):
+        cfg = load_config()
+
+    assert cfg.workspace == str(ws)
+    assert cfg.models_dir == str(ws / "custom_models")
+    assert cfg.models_ini == str(ws / "models.ini")
+    assert cfg.llama_server_bin == str(ws / "bin" / "llama-server.exe")

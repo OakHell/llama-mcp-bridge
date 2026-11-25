@@ -7,16 +7,9 @@ import tarfile
 import zipfile
 from pathlib import Path
 
+from llama_mcp_bridge.config import get_config_home
 from llama_mcp_bridge.hardware import detect_hardware
 from llama_mcp_bridge.presets import generate_models_ini
-
-
-def _get_config_home() -> Path:
-    """Determine the configuration home directory."""
-    env_home = os.environ.get("LLAMA_MCP_HOME")
-    if env_home:
-        return Path(env_home).expanduser()
-    return Path.home() / ".config" / "llama-mcp-bridge"
 
 
 def _macos_release_asset(arch: str) -> str:
@@ -41,7 +34,7 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> None:
 def _generate_service_file(dry_run: bool) -> None:
     """Generate an OS-specific service unit file."""
     os_name = platform.system()
-    home = _get_config_home()
+    home = get_config_home()
 
     if dry_run:
         print(f"[DRY-RUN] Would generate service file for {os_name} in {home}")
@@ -112,7 +105,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    home = _get_config_home()
+    home = get_config_home()
     models_dir = Path(args.models_dir) if args.models_dir else home / "models"
 
     profile = detect_hardware()
