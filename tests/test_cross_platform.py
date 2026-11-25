@@ -74,7 +74,7 @@ def test_supervisor_windows_popen_and_stop():
         patch.object(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, create=True),
         patch.object(subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True),
     ):
-        sup._start_server()
+        assert sup._start_server() is True
         cmd = mock_popen.call_args.args[0]
         assert cmd[0].endswith("llama-server.exe")
         kwargs = mock_popen.call_args.kwargs
@@ -86,6 +86,7 @@ def test_supervisor_windows_popen_and_stop():
 
 
 def test_supervisor_posix_popen():
+    import os
     from llama_mcp_bridge.config import BridgeConfig
     from llama_mcp_bridge.supervisor import LlamaSupervisor
 
@@ -96,9 +97,10 @@ def test_supervisor_posix_popen():
     with (
         patch("llama_mcp_bridge.supervisor.sys.platform", "linux"),
         patch("shutil.which", return_value="/usr/bin/llama-server"),
+        patch.object(os, "setsid", MagicMock(), create=True),
         patch("llama_mcp_bridge.supervisor.subprocess.Popen", return_value=mock_proc) as mock_popen,
     ):
-        sup._start_server()
+        assert sup._start_server() is True
         cmd = mock_popen.call_args.args[0]
         assert cmd[0] == "llama-server"
         kwargs = mock_popen.call_args.kwargs
