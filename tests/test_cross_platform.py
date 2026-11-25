@@ -38,10 +38,12 @@ def test_macos_launchd_plist_valid_xml(tmp_path: Path, monkeypatch):
     with patch("platform.system", return_value="Darwin"):
         _generate_service_file(dry_run=False)
 
-    plist_path = tmp_path / "com.llama-mcp-bridge.plist"
+    plist_path = tmp_path / "com.llama-server.plist"
     assert plist_path.exists()
     data = plistlib.loads(plist_path.read_bytes())
-    assert data["Label"] == "com.llama-mcp-bridge"
+    assert data["Label"] == "com.llama-server"
+    assert data["WorkingDirectory"] == str(tmp_path)
+    assert "--models-preset" in data["ProgramArguments"]
     assert data["RunAtLoad"] is True
 
 

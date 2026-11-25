@@ -59,6 +59,8 @@ def _generate_service_file(dry_run: bool) -> None:
         workspace = Path(cfg.workspace)
         bat_path = workspace / "start-llama-server.bat"
         bat_content = (
+            "@echo off\n"
+            'cd /d "%~dp0"\n'
             f'start "" /B "{server_bin}" --models-preset "{cfg.models_ini}" '
             f"--host {cfg.host} --port {cfg.port}\n"
         )
@@ -77,7 +79,7 @@ def _generate_service_file(dry_run: bool) -> None:
 
     if sys.platform == "darwin" or platform.system() == "Darwin":
         home = get_config_home()
-        plist_path = home / "com.llama-mcp-bridge.plist"
+        plist_path = home / "com.llama-server.plist"
         plist_xml = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
@@ -85,13 +87,18 @@ def _generate_service_file(dry_run: bool) -> None:
             '<plist version="1.0">\n'
             "<dict>\n"
             "  <key>Label</key>\n"
-            "  <string>com.llama-mcp-bridge</string>\n"
+            "  <string>com.llama-server</string>\n"
+            "  <key>WorkingDirectory</key>\n"
+            f"  <string>{cfg.workspace}</string>\n"
             "  <key>ProgramArguments</key>\n"
             "  <array>\n"
-            "    <string>/usr/bin/env</string>\n"
-            "    <string>python3</string>\n"
-            "    <string>-m</string>\n"
-            "    <string>llama_mcp_bridge</string>\n"
+            f"    <string>{server_bin}</string>\n"
+            "    <string>--models-preset</string>\n"
+            f"    <string>{cfg.models_ini}</string>\n"
+            "    <string>--host</string>\n"
+            f"    <string>{cfg.host}</string>\n"
+            "    <string>--port</string>\n"
+            f"    <string>{cfg.port}</string>\n"
             "  </array>\n"
             "  <key>RunAtLoad</key>\n"
             "  <true/>\n"
