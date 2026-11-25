@@ -305,7 +305,7 @@ def test_download_tier_models_skips_existing(tmp_path: Path):
     from llama_mcp_bridge.installer import _download_tier_models
     from llama_mcp_bridge.presets import get_tier_model_specs
 
-    for spec in get_tier_model_specs("8gb"):
+    for spec in get_tier_model_specs("6gb"):
         (tmp_path / spec["filename"]).write_bytes(b"gguf")
 
     profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
@@ -349,3 +349,27 @@ def test_download_tier_models_dry_run_no_network(tmp_path: Path):
     with patch("llama_mcp_bridge.installer.urllib.request.urlopen") as mock_url:
         _download_tier_models(profile, tmp_path, dry_run=True)
     mock_url.assert_not_called()
+
+
+def test_tier_model_registry_matches_generated_models_ini():
+    import configparser
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.presets import generate_models_ini, get_tier_model_specs
+
+    for tier in ("6gb", "8gb", "12gb", "16gb", "24gb+"):
+        profile = SystemProfile("linux", "x86_64", "nvidia", "GPU", 8.0, "sm_86", "ubuntu", tier)
+        ini_str = generate_models_ini(profile, models_dir="/models")
+        parser = configparser.ConfigParser()
+        parser.read_string(ini_str)
+
+        specs = get_tier_model_specs(tier)
+        registry_files = {s["filename"]: s["url"] for s in specs}
+
+        for section in parser.sections():
+            for key in ("model", "mmproj"):
+                if parser.has_option(section, key):
+                    basename = Path(parser.get(section, key)).name
+                    assert basename in registry_files, f"{basename} missing in {tier} registry"
+                    assert registry_files[basename].startswith("https://huggingface.co/")
+                    assert "/resolve/main/" in registry_files[basename]

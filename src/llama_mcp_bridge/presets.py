@@ -107,6 +107,21 @@ def generate_models_ini(profile: SystemProfile, models_dir: str = "/mnt/ai/model
                 "analyst": "4096",
                 "generalist": "4096",
             },
+            "model_overrides": {
+                "coder-fast": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+                "coder": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+                "coder-long": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+                "vision-deep": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+                "vision": "MiniCPM-V-2_6-Q4_K_M.gguf",
+                "reasoner": "granite-3.1-2b-instruct-q4_k_m.gguf",
+                "analyst": "Ministral-3B-Reasoning-2512-Q4_K_M.gguf",
+                "generalist": "gemma-2-2b-it-q4_k_m.gguf",
+                "digest": "LFM3-1.7B-Q8_0.gguf",
+            },
+            "mmproj_overrides": {
+                "vision-deep": "mmproj-model-f16.gguf",
+                "vision": "mmproj-model-f16.gguf",
+            },
         },
         "8gb": {
             "cache-k": "q8_0",
@@ -114,6 +129,8 @@ def generate_models_ini(profile: SystemProfile, models_dir: str = "/mnt/ai/model
             "parallel": "1",
             "no_mmproj_offload": "true",
             "ctx_overrides": {},
+            "model_overrides": {},
+            "mmproj_overrides": {},
         },
         "12gb": {
             "cache-k": "q8_0",
@@ -130,6 +147,8 @@ def generate_models_ini(profile: SystemProfile, models_dir: str = "/mnt/ai/model
                 "analyst": "12288",
                 "generalist": "12288",
             },
+            "model_overrides": {},
+            "mmproj_overrides": {},
         },
         "16gb": {
             "cache-k": "q8_0",
@@ -146,6 +165,8 @@ def generate_models_ini(profile: SystemProfile, models_dir: str = "/mnt/ai/model
                 "analyst": "16384",
                 "generalist": "16384",
             },
+            "model_overrides": {},
+            "mmproj_overrides": {},
         },
         "24gb+": {
             "cache-k": "q8_0",
@@ -162,6 +183,12 @@ def generate_models_ini(profile: SystemProfile, models_dir: str = "/mnt/ai/model
                 "analyst": "32768",
                 "generalist": "32768",
             },
+            "model_overrides": {
+                "coder-fast": "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+                "coder": "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+                "coder-long": "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+            },
+            "mmproj_overrides": {},
         },
     }
 
@@ -176,6 +203,14 @@ def generate_models_ini(profile: SystemProfile, models_dir: str = "/mnt/ai/model
     for section, ctx_val in adj["ctx_overrides"].items():
         if section in base_config:
             base_config[section]["ctx-size"] = ctx_val
+
+    for section, model_name in adj["model_overrides"].items():
+        if section in base_config:
+            base_config[section]["model"] = f"{models_dir}/{model_name}"
+
+    for section, mmproj_name in adj["mmproj_overrides"].items():
+        if section in base_config:
+            base_config[section]["mmproj"] = f"{models_dir}/{mmproj_name}"
 
     lines: list[str] = ["[*]"]
     for key, value in base_config["global"].items():
@@ -202,72 +237,47 @@ def generate_models_ini(profile: SystemProfile, models_dir: str = "/mnt/ai/model
     return "\n".join(lines)
 
 
-_BASE_MODEL_SPECS: list[dict[str, Any]] = [
-    {
-        "role": "coder-fast",
-        "filename": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
-        "repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
-        "size_gb": 4.7,
-    },
-    {
-        "role": "coder",
-        "filename": "Qwen3.5-9B-UD-Q4_K_XL.gguf",
-        "repo": "unsloth/Qwen3.5-9B-GGUF",
-        "size_gb": 5.5,
-    },
-    {
-        "role": "vision-deep-mmproj",
-        "filename": "mmproj-BF16.gguf",
-        "repo": "unsloth/Qwen3.5-9B-GGUF",
-        "size_gb": 0.9,
-    },
-    {
-        "role": "vision",
-        "filename": "MiniCPM-V-4_6-Q4_K_M.gguf",
-        "repo": "openbmb/MiniCPM-V-4_6-gguf",
-        "size_gb": 4.8,
-    },
-    {
-        "role": "vision-mmproj",
-        "filename": "mmproj-model-f16.gguf",
-        "repo": "openbmb/MiniCPM-V-4_6-gguf",
-        "size_gb": 0.8,
-    },
-    {
-        "role": "reasoner",
-        "filename": "granite-4.2-8b-Q4_K_M.gguf",
-        "repo": "ibm-granite/granite-4.2-8b-GGUF",
-        "size_gb": 4.9,
-    },
-    {
-        "role": "analyst",
-        "filename": "Ministral-3-8B-Reasoning-2512-UD-Q4_K_XL.gguf",
-        "repo": "unsloth/Ministral-3-8B-Reasoning-2512-GGUF",
-        "size_gb": 5.1,
-    },
-    {
-        "role": "generalist",
-        "filename": "gemma-4-E4B-it-UD-Q6_K_XL.gguf",
-        "repo": "unsloth/gemma-4-E4B-it-GGUF",
-        "size_gb": 4.2,
-    },
-    {
-        "role": "digest",
-        "filename": "LFM3-1.7B-Q8_0.gguf",
-        "repo": "LiquidAI/LFM3-1.7B-GGUF",
-        "size_gb": 1.8,
-    },
+def _with_urls(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {**s, "url": f"https://huggingface.co/{s['repo']}/resolve/main/{s['filename']}"}
+        for s in specs
+    ]
+
+
+_STANDARD_SPECS: list[dict[str, Any]] = [
+    {"role": "coder-fast", "filename": "qwen2.5-coder-7b-instruct-q4_k_m.gguf", "repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF", "size_gb": 4.7},
+    {"role": "coder", "filename": "Qwen3.5-9B-UD-Q4_K_XL.gguf", "repo": "unsloth/Qwen3.5-9B-GGUF", "size_gb": 5.5},
+    {"role": "vision-deep-mmproj", "filename": "mmproj-BF16.gguf", "repo": "unsloth/Qwen3.5-9B-GGUF", "size_gb": 0.9},
+    {"role": "vision", "filename": "MiniCPM-V-4_6-Q4_K_M.gguf", "repo": "openbmb/MiniCPM-V-4_6-gguf", "size_gb": 4.8},
+    {"role": "vision-mmproj", "filename": "mmproj-model-f16.gguf", "repo": "openbmb/MiniCPM-V-4_6-gguf", "size_gb": 0.8},
+    {"role": "reasoner", "filename": "granite-4.2-8b-Q4_K_M.gguf", "repo": "ibm-granite/granite-4.2-8b-GGUF", "size_gb": 4.9},
+    {"role": "analyst", "filename": "Ministral-3-8B-Reasoning-2512-UD-Q4_K_XL.gguf", "repo": "unsloth/Ministral-3-8B-Reasoning-2512-GGUF", "size_gb": 5.1},
+    {"role": "generalist", "filename": "gemma-4-E4B-it-UD-Q6_K_XL.gguf", "repo": "unsloth/gemma-4-E4B-it-GGUF", "size_gb": 4.2},
+    {"role": "digest", "filename": "LFM3-1.7B-Q8_0.gguf", "repo": "LiquidAI/LFM3-1.7B-GGUF", "size_gb": 1.8},
+]
+
+_COMPACT_6GB_SPECS: list[dict[str, Any]] = [
+    {"role": "coder-fast", "filename": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf", "repo": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF", "size_gb": 1.1},
+    {"role": "coder", "filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf", "repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF", "size_gb": 1.1},
+    {"role": "vision", "filename": "MiniCPM-V-2_6-Q4_K_M.gguf", "repo": "openbmb/MiniCPM-V-2_6-gguf", "size_gb": 4.7},
+    {"role": "vision-mmproj", "filename": "mmproj-model-f16.gguf", "repo": "openbmb/MiniCPM-V-2_6-gguf", "size_gb": 0.8},
+    {"role": "reasoner", "filename": "granite-3.1-2b-instruct-q4_k_m.gguf", "repo": "bartowski/granite-3.1-2b-instruct-GGUF", "size_gb": 1.6},
+    {"role": "analyst", "filename": "Ministral-3B-Reasoning-2512-Q4_K_M.gguf", "repo": "unsloth/Ministral-3B-Reasoning-2512-GGUF", "size_gb": 2.1},
+    {"role": "generalist", "filename": "gemma-2-2b-it-q4_k_m.gguf", "repo": "bartowski/gemma-2-2b-it-GGUF", "size_gb": 1.7},
+    {"role": "digest", "filename": "LFM3-1.7B-Q8_0.gguf", "repo": "LiquidAI/LFM3-1.7B-GGUF", "size_gb": 1.8},
+]
+
+_LARGE_24GB_SPECS: list[dict[str, Any]] = [
+    {"role": "coder-fast", "filename": "qwen2.5-coder-14b-instruct-q4_k_m.gguf", "repo": "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF", "size_gb": 9.0},
+    *[s for s in _STANDARD_SPECS if s["role"] != "coder-fast"],
 ]
 
 TIER_MODEL_REGISTRY: dict[str, list[dict[str, Any]]] = {
-    tier: [
-        {
-            **spec,
-            "url": f"https://huggingface.co/{spec['repo']}/resolve/main/{spec['filename']}",
-        }
-        for spec in _BASE_MODEL_SPECS
-    ]
-    for tier in ("6gb", "8gb", "12gb", "16gb", "24gb+")
+    "6gb": _with_urls(_COMPACT_6GB_SPECS),
+    "8gb": _with_urls(_STANDARD_SPECS),
+    "12gb": _with_urls(_STANDARD_SPECS),
+    "16gb": _with_urls(_STANDARD_SPECS),
+    "24gb+": _with_urls(_LARGE_24GB_SPECS),
 }
 
 
