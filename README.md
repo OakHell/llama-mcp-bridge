@@ -12,11 +12,26 @@ A cross-platform Model Context Protocol (MCP) bridge connecting MCP clients to a
 
 ## Installation & Execution
 
-### Via `uv tool install` (recommended)
+### Direct from GitHub (recommended)
 
 ```bash
-uv tool install llama-mcp-bridge
+uv tool install git+https://github.com/OakHell/llama-mcp-bridge
 uv tool update-shell
+```
+
+### From a local clone (editable)
+
+```bash
+git clone https://github.com/OakHell/llama-mcp-bridge.git
+cd llama-mcp-bridge
+uv tool install --editable .
+uv tool update-shell
+```
+
+### Ephemeral execution without installing (`uvx`)
+
+```bash
+uvx --from git+https://github.com/OakHell/llama-mcp-bridge llama-mcp-install --dry-run
 ```
 
 Running `uv tool update-shell` ensures `llama-mcp-bridge` and `llama-mcp-install` are on your `PATH`.
