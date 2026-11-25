@@ -40,3 +40,19 @@
 - **Selective Preset Generation & Deduplicated Merging (`presets.py`)**: Added `selected_presets` filtering to `generate_models_ini()`, `merge_models_ini()` to add or update presets without duplicate `[section]` headers, and `--presets` on `llama-mcp-install` (wired into `_run_tui_wizard()`).
 - **Safe Shared-GGUF Removal (`remove_models_from_ini()`)**: Unlinks `.gguf` and `mmproj` files only when no remaining preset in `models.ini` references them.
 - **CPU Backend Guard & Installer Polish**: Enforces `n-gpu-layers = 0` and `device = none` on CPU-only profiles, flattens nested prebuilt release directories with symlinks intact, supports `--uninstall` cleanup, and falls back across recent `llama.cpp` releases.
+
+---
+
+## Planned Releases — Cross-Platform Hardening (`v0.5.x`)
+
+### `v0.5.0` — Phase 1: Cross-Platform Binary Extraction & Runtime Libraries (Shipped)
+- **Windows CUDA Runtime Co-Location (`installer.py`)**: Rejects `cudart-llama-*.zip` runtime-only archives in `_select_llama_release_asset()` and automatically fetches + extracts companion `cudart` DLLs alongside `llama-server.exe` on Windows NVIDIA setups.
+- **macOS Runtime Libraries & Ad-Hoc Signing (`installer.py`)**: Preserves companion `.dylib` and `.metallib` files alongside `llama-server` when flattening extracted archives and runs `codesign --force --deep -s -` on extracted Mach-O binaries on Apple Silicon.
+
+### `v0.5.1` — Phase 2: Native Background Service Lifecycles (Windows & macOS)
+- **Windows (`_generate_service_file()`)**: Add `/F` to `schtasks /Create`, wrap `/TR` paths containing spaces in escaped quotes, and launch `start-llama-server.bat` without a visible console window.
+- **macOS (`_generate_service_file()`)**: Migrate from legacy `launchctl load/unload` to `launchctl bootstrap gui/<uid>` / `bootout`, and include `<key>WorkingDirectory</key>` plus `<key>EnvironmentVariables</key>` (`LLAMA_MCP_HOME`) in the `.plist`.
+
+### `v0.5.2` — Phase 3: Windows Interactive TUI & MCP Client Path Resolution
+- **Windows TUI Key Handling (`models_cli.py`)**: Handle Windows `msvcrt.getch()` two-byte arrow prefixes (`\xe0` / `\x00` + `H`/`P`) in `select_presets_interactive()`.
+- **MCP Client Binary Resolution (`installer.py`)**: Resolve `shutil.which("llama-mcp-bridge")` to the full `.exe`/binary path in the `mcp_config.json` snippet when the script directory is not yet on `PATH`.

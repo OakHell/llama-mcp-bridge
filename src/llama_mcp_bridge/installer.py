@@ -160,6 +160,55 @@ def _select_llama_release_asset(
     return candidates[0][1]
 
 
+def _select_cudart_release_asset(
+    assets: list[dict[str, Any]], main_asset_name: str, profile: SystemProfile
+) -> dict[str, Any] | None:
+    """Select the companion cudart archive matching a Windows CUDA llama.cpp release asset."""
+    if profile.os_name != "windows" or profile.gpu_vendor != "nvidia" or "cuda" not in main_asset_name.lower():
+        return None
+    is_arm = profile.arch.lower() in ("arm64", "aarch64")
+    arch_tok = "arm64" if is_arm else "x64"
+    bad_arch = "x64" if is_arm else "arm64"
+    main_lower = main_asset_name.lower()
+
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    for asset in assets:
+        name = asset.get("name", "").lower()
+        if not name.startswith("cudart-") or not name.endswith(".zip"):
+            continue
+        if "win" not in name or bad_arch in name or arch_tok not in name:
+            continue
+        score = 0
+        for part in main_lower.split("-"):
+            if "." in part and part in name:
+                score += 10
+        candidates.append((score, asset))
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1]
+
+
+def _flatten_extracted_dir(root_dir: Path, target_name: str) -> None:
+    """Flatten a nested archive directory containing target_name directly into root_dir."""
+    found = next(root_dir.rglob(target_name), None)
+    if found and found.parent != root_dir:
+        nested_dir = found.parent
+        for item in list(nested_dir.iterdir()):
+            dest = root_dir / item.name
+            if dest.exists() or dest.is_symlink():
+                if dest.is_dir() and not dest.is_symlink():
+                    shutil.rmtree(dest)
+                else:
+                    dest.unlink()
+            if item.is_symlink():
+                os.symlink(os.readlink(item), dest)
+            else:
+                shutil.move(str(item), str(dest))
+        shutil.rmtree(nested_dir, ignore_errors=True)
+
+
 def _auto_install_llama_server(
     profile: SystemProfile, mode: str, workspace: Path, dry_run: bool, yes: bool
 ) -> None:
@@ -195,7 +244,8 @@ def _auto_install_llama_server(
         api_url = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
         with urllib.request.urlopen(api_url, timeout=15) as resp:
             release = json.loads(resp.read().decode("utf-8"))
-        match = _select_llama_release_asset(release.get("assets", []), profile)
+        matched_release_assets = release.get("assets", [])
+        match = _select_llama_release_asset(matched_release_assets, profile)
         if not match:
             list_url = "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=10"
             with urllib.request.urlopen(list_url, timeout=15) as resp:
@@ -203,8 +253,10 @@ def _auto_install_llama_server(
             for rel in releases:
                 if rel.get("draft"):
                     continue
-                match = _select_llama_release_asset(rel.get("assets", []), profile)
+                rel_assets = rel.get("assets", [])
+                match = _select_llama_release_asset(rel_assets, profile)
                 if match:
+                    matched_release_assets = rel_assets
                     break
         if not match:
             raise RuntimeError(f"No prebuilt llama.cpp release asset found for {profile.os_name}/{profile.arch}")
@@ -213,21 +265,23 @@ def _auto_install_llama_server(
             with urllib.request.urlopen(match["browser_download_url"], timeout=60) as dl:
                 archive_path.write_bytes(dl.read())
             _extract_archive(archive_path, bin_dir)
-            found_bin = next(bin_dir.rglob(exe_name), None)
-            if found_bin and found_bin.parent != bin_dir:
-                nested_dir = found_bin.parent
-                for item in list(nested_dir.iterdir()):
-                    dest = bin_dir / item.name
-                    if dest.exists() or dest.is_symlink():
-                        if dest.is_dir() and not dest.is_symlink():
-                            shutil.rmtree(dest)
-                        else:
-                            dest.unlink()
-                    if item.is_symlink():
-                        os.symlink(os.readlink(item), dest)
-                    else:
-                        shutil.move(str(item), str(dest))
-                shutil.rmtree(nested_dir, ignore_errors=True)
+            _flatten_extracted_dir(bin_dir, exe_name)
+
+            cudart_match = _select_cudart_release_asset(matched_release_assets, match["name"], profile)
+            if cudart_match:
+                cudart_path = Path(tmpdir) / cudart_match["name"]
+                with urllib.request.urlopen(cudart_match["browser_download_url"], timeout=60) as dl:
+                    cudart_path.write_bytes(dl.read())
+                _extract_archive(cudart_path, bin_dir)
+                _flatten_extracted_dir(bin_dir, "*.dll")
+
+            if profile.os_name == "darwin":
+                for ext in ("*.dylib", "*.metallib"):
+                    for lib in list(bin_dir.rglob(ext)):
+                        if lib.parent != bin_dir:
+                            dest = bin_dir / lib.name
+                            if not dest.exists():
+                                shutil.move(str(lib), str(dest))
     else:
         backend_flags = {
             "nvidia": "-DGGML_CUDA=ON",
@@ -254,6 +308,13 @@ def _auto_install_llama_server(
         raise RuntimeError(f"Expected binary {target_bin} not found after installation.")
     if sys.platform != "win32":
         os.chmod(target_bin, 0o755)
+    if profile.os_name == "darwin":
+        for mach_o in [target_bin, *bin_dir.glob("*.dylib")]:
+            if mach_o.is_file() and not mach_o.is_symlink():
+                try:
+                    subprocess.run(["codesign", "--force", "--deep", "-s", "-", str(mach_o)], check=False)
+                except FileNotFoundError:
+                    break
     _persist_server_bin(workspace, f"bin/{exe_name}")
     print(f"Installed llama-server to {target_bin}")
 

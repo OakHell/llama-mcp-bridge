@@ -1075,3 +1075,115 @@ def test_uninstall_silences_systemctl_stderr(monkeypatch, tmp_path: Path):
     assert len(disable_calls) == 1
     assert disable_calls[0].kwargs["stdout"] == subprocess.DEVNULL
     assert disable_calls[0].kwargs["stderr"] == subprocess.DEVNULL
+
+
+def test_select_llama_release_asset_excludes_cudart():
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _select_llama_release_asset
+
+    profile = SystemProfile("windows", "AMD64", "nvidia", "RTX 3070", 8.0, "sm_86", "windows", "8gb")
+    assets = [
+        {"name": "cudart-llama-bin-win-cuda-12.4-x64.zip", "browser_download_url": "https://example.com/cudart.zip"},
+        {"name": "llama-b1234-bin-win-cuda-12.4-x64.zip", "browser_download_url": "https://example.com/cuda.zip"},
+    ]
+    selected = _select_llama_release_asset(assets, profile)
+    assert selected is not None
+    assert selected["name"] == "llama-b1234-bin-win-cuda-12.4-x64.zip"
+
+    only_cudart = [{"name": "cudart-llama-bin-win-cuda-12.4-x64.zip", "browser_download_url": "https://example.com/cudart.zip"}]
+    assert _select_llama_release_asset(only_cudart, profile) is None
+
+
+def test_auto_install_windows_nvidia_colocates_cudart_dlls(tmp_path: Path):
+    import io
+    import json
+    import zipfile
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _auto_install_llama_server
+
+    main_buf = io.BytesIO()
+    with zipfile.ZipFile(main_buf, "w") as zf:
+        zf.writestr("llama-b1234/llama-server.exe", b"MZ")
+    cudart_buf = io.BytesIO()
+    with zipfile.ZipFile(cudart_buf, "w") as zf:
+        zf.writestr("cudart64_12.dll", b"DLL1")
+        zf.writestr("cublas64_12.dll", b"DLL2")
+
+    rel_json = json.dumps(
+        {
+            "assets": [
+                {"name": "cudart-llama-bin-win-cuda-12.4-x64.zip", "browser_download_url": "https://example.com/cudart.zip"},
+                {"name": "llama-b1234-bin-win-cuda-12.4-x64.zip", "browser_download_url": "https://example.com/llama.zip"},
+            ]
+        }
+    ).encode("utf-8")
+
+    r_api = MagicMock()
+    r_api.__enter__.return_value = r_api
+    r_api.read.return_value = rel_json
+
+    r_main = MagicMock()
+    r_main.__enter__.return_value = r_main
+    r_main.read.return_value = main_buf.getvalue()
+
+    r_cudart = MagicMock()
+    r_cudart.__enter__.return_value = r_cudart
+    r_cudart.read.return_value = cudart_buf.getvalue()
+
+    profile = SystemProfile("windows", "AMD64", "nvidia", "RTX 3070", 8.0, "sm_86", "windows", "8gb")
+    with patch("llama_mcp_bridge.installer.urllib.request.urlopen", side_effect=[r_api, r_main, r_cudart]):
+        _auto_install_llama_server(profile, "prebuilt", tmp_path, dry_run=False, yes=True)
+
+    assert (tmp_path / "bin" / "llama-server.exe").is_file()
+    assert (tmp_path / "bin" / "cudart64_12.dll").is_file()
+    assert (tmp_path / "bin" / "cublas64_12.dll").is_file()
+
+
+def test_auto_install_macos_preserves_dylib_metallib_and_codesigns(tmp_path: Path):
+    import io
+    import json
+    import tarfile
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _auto_install_llama_server
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for fname, payload in (
+            ("build/bin/llama-server", b"MACHO"),
+            ("build/bin/libllama.dylib", b"DYLIB"),
+            ("build/bin/ggml-metal.metallib", b"METAL"),
+        ):
+            info = tarfile.TarInfo(fname)
+            info.size = len(payload)
+            tf.addfile(info, io.BytesIO(payload))
+
+    rel_json = json.dumps(
+        {
+            "assets": [
+                {"name": "llama-b1234-bin-macos-arm64.tar.gz", "browser_download_url": "https://example.com/macos.tar.gz"}
+            ]
+        }
+    ).encode("utf-8")
+
+    r_api = MagicMock()
+    r_api.__enter__.return_value = r_api
+    r_api.read.return_value = rel_json
+
+    r_tgz = MagicMock()
+    r_tgz.__enter__.return_value = r_tgz
+    r_tgz.read.return_value = buf.getvalue()
+
+    profile = SystemProfile("darwin", "arm64", "apple", "Apple M2", 16.0, "", "macos", "16gb")
+    with (
+        patch("llama_mcp_bridge.installer.urllib.request.urlopen", side_effect=[r_api, r_tgz]),
+        patch("llama_mcp_bridge.installer.subprocess.run") as mock_run,
+    ):
+        _auto_install_llama_server(profile, "prebuilt", tmp_path, dry_run=False, yes=True)
+
+    assert (tmp_path / "bin" / "llama-server").is_file()
+    assert (tmp_path / "bin" / "libllama.dylib").is_file()
+    assert (tmp_path / "bin" / "ggml-metal.metallib").is_file()
+    codesign_calls = [c.args[0] for c in mock_run.call_args_list if c.args[0][0] == "codesign"]
+    assert any(c[:5] == ["codesign", "--force", "--deep", "-s", "-"] for c in codesign_calls)
