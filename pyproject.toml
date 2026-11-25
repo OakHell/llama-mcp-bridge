@@ -1,0 +1,26 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[project]
+name = "llama-mcp-bridge"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["fastmcp", "pathspec", "requests"]
+
+[project.scripts]
+llama-mcp-bridge = "llama_mcp_bridge.bridge:main"
+llama-mcp-install = "llama_mcp_bridge.installer:main"
+
+[dependency-groups]
+dev = ["pytest", "ruff"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llama_mcp_bridge"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
