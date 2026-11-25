@@ -1,7 +1,6 @@
 """Cross-platform installer CLI for llama-mcp-bridge."""
 
 import argparse
-import platform
 import shutil
 import subprocess
 import sys
@@ -77,7 +76,7 @@ def _generate_service_file(dry_run: bool) -> None:
         subprocess.run(schtasks_cmd, check=False)
         return
 
-    if sys.platform == "darwin" or platform.system() == "Darwin":
+    if sys.platform == "darwin":
         home = get_config_home()
         plist_path = home / "com.llama-server.plist"
         plist_xml = (

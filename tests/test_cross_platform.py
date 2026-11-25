@@ -35,7 +35,7 @@ def test_macos_release_asset_mapping():
 
 def test_macos_launchd_plist_valid_xml(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
-    with patch("platform.system", return_value="Darwin"):
+    with patch("llama_mcp_bridge.installer.sys.platform", "darwin"):
         _generate_service_file(dry_run=False)
 
     plist_path = tmp_path / "com.llama-server.plist"
