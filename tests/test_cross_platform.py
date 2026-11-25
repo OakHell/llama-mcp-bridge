@@ -1293,3 +1293,67 @@ def test_resolve_bridge_command_and_mcp_snippet(capsys, monkeypatch, tmp_path: P
 
     out = capsys.readouterr().out
     assert "llama-mcp-bridge.exe" in out
+
+
+def test_auto_install_source_hermetic_scrubs_env_and_static_flags(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _auto_install_llama_server
+
+    for var, val in (
+        ("CFLAGS", "-O0"),
+        ("CXXFLAGS", "-O0"),
+        ("LDFLAGS", "-Wl,--bad"),
+        ("CMAKE_PREFIX_PATH", "/bad/prefix"),
+    ):
+        monkeypatch.setenv(var, val)
+
+    def fake_run(cmd, check=False, env=None, **_kwargs):
+        if "--build" in cmd:
+            bdir = Path(cmd[cmd.index("--build") + 1])
+            bdir.mkdir(parents=True, exist_ok=True)
+            (bdir / "llama-server").write_bytes(b"#!/bin/sh\n")
+        return MagicMock(returncode=0)
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "ubuntu", "6gb")
+    with (
+        patch("llama_mcp_bridge.installer.shutil.which", return_value="/usr/bin/cmake"),
+        patch("llama_mcp_bridge.installer.subprocess.run", side_effect=fake_run) as mock_run,
+    ):
+        _auto_install_llama_server(profile, "source-hermetic", tmp_path, dry_run=False, yes=True)
+
+    cfg_call = mock_run.call_args_list[1]
+    assert "-DBUILD_SHARED_LIBS=OFF" in cfg_call.args[0]
+    assert "-DLLAMA_CURL=OFF" in cfg_call.args[0]
+    assert "-DCMAKE_BUILD_TYPE=Release" in cfg_call.args[0]
+    passed_env = cfg_call.kwargs["env"]
+    for var in ("CFLAGS", "CXXFLAGS", "LDFLAGS", "CMAKE_PREFIX_PATH"):
+        assert var not in passed_env
+
+
+def test_auto_install_source_system_dynamic_flags_and_copies_shared_libs(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _auto_install_llama_server
+
+    monkeypatch.setenv("CFLAGS", "-O2")
+
+    def fake_run(cmd, check=False, env=None, **_kwargs):
+        if "--build" in cmd:
+            bdir = Path(cmd[cmd.index("--build") + 1]) / "bin"
+            bdir.mkdir(parents=True, exist_ok=True)
+            (bdir / "llama-server").write_bytes(b"#!/bin/sh\n")
+            (bdir / "libllama.so").write_bytes(b"SO")
+        return MagicMock(returncode=0)
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "ubuntu", "6gb")
+    with (
+        patch("llama_mcp_bridge.installer.shutil.which", return_value="/usr/bin/cmake"),
+        patch("llama_mcp_bridge.installer.subprocess.run", side_effect=fake_run) as mock_run,
+    ):
+        _auto_install_llama_server(profile, "source-system", tmp_path, dry_run=False, yes=True)
+
+    cfg_call = mock_run.call_args_list[1]
+    assert "-DBUILD_SHARED_LIBS=ON" in cfg_call.args[0]
+    assert "-DCMAKE_BUILD_TYPE=Release" in cfg_call.args[0]
+    assert cfg_call.kwargs["env"] is None
+    assert (tmp_path / "bin" / "llama-server").is_file()
+    assert (tmp_path / "bin" / "libllama.so").is_file()

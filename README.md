@@ -71,8 +71,8 @@ uv run pytest -v
 | Flag | Description |
 | :--- | :--- |
 | `--mode prebuilt` | Downloads or configures prebuilt `llama.cpp` binaries (default). |
-| `--mode source-hermetic` | Builds `llama.cpp` from source in a hermetic environment. |
-| `--mode source-system` | Builds `llama.cpp` from source using system toolchains. |
+| `--mode source-hermetic` | Builds a self-contained static `llama-server` from source (`-DBUILD_SHARED_LIBS=OFF -DLLAMA_CURL=OFF`) with scrubbed build env vars and `uvx cmake` fallback. |
+| `--mode source-system` | Builds `llama-server` dynamically (`-DBUILD_SHARED_LIBS=ON`) using system toolchains/env vars and copies built shared libraries into `<workspace>/bin/`. |
 | `--mode system-bin` | Uses an existing `llama-server` binary on `PATH`. |
 | `--dry-run` | Prints planned actions without writing files or executing subprocesses. |
 | `-y`, `--yes` | Auto-confirms `llama-server` installation when undetected. |
@@ -90,6 +90,7 @@ uv run pytest -v
 | `--install-service` | Generates an OS-specific user service (`systemd` on Linux, `launchd` on macOS). |
 
 > **Hardware Prerequisites:** `llama-mcp-install` audits your GPU/OS tools (`nvidia-smi`, `nvcc`, `rocminfo`, `vulkaninfo`, `xcode-select`, `cmake`) and warns if any BYO drivers or SDKs are missing before offering to install `llama-server`.
+> **Source Build Caveats:** `--mode source-hermetic` produces an isolated static binary (`-DBUILD_SHARED_LIBS=OFF -DLLAMA_CURL=OFF`), but still requires a host C/C++ compiler (`cl.exe` on Windows, `xcode-select` on macOS) and GPU SDKs (`nvcc`/`hipcc`) for GPU backends. On macOS, `llama-mcp-install` runs ad-hoc `codesign --force --deep -s -` automatically; if Gatekeeper blocks execution, re-run `codesign --force --deep -s - <workspace>/bin/llama-server`. Prefer `--mode prebuilt` or `--mode source-system` for dynamic GPU/system library linking.
 
 ## Model Management (`llama-mcp-models`)
 
@@ -160,7 +161,7 @@ uv run ruff check .
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for shipped `v0.1.0` / `v0.2.0` milestones and upcoming `v0.3.0` plans.
+See [ROADMAP.md](ROADMAP.md) for the full release history (`v0.1.0`–`v0.5.x`), including `llama-mcp-models`, selective presets, Windows/macOS cross-platform hardening, and upcoming milestones.
 
 ## License
 

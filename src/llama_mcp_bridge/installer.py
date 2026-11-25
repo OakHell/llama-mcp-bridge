@@ -290,6 +290,29 @@ def _auto_install_llama_server(
             "apple": "-DGGML_METAL=ON",
         }
         flag = backend_flags.get(profile.gpu_vendor, "-DGGML_NATIVE=ON")
+        is_hermetic = mode == "source-hermetic"
+        cmake_cmd = ["cmake"] if shutil.which("cmake") else (["uvx", "cmake"] if is_hermetic and shutil.which("uvx") else ["cmake"])
+        build_env: dict[str, str] | None = None
+        if is_hermetic:
+            scrub = {"CFLAGS", "CXXFLAGS", "LDFLAGS", "CMAKE_PREFIX_PATH"}
+            build_env = {k: v for k, v in os.environ.items() if k not in scrub}
+            if profile.os_name == "windows" and not (shutil.which("cl") or shutil.which("g++") or shutil.which("clang")):
+                print("Warning: No C/C++ compiler (cl.exe/g++/clang) detected on PATH; source-hermetic build may fail.")
+            if not shutil.which("ninja") and shutil.which("uvx"):
+                cmake_flags_extra = ["-DCMAKE_MAKE_PROGRAM=ninja"]
+            else:
+                cmake_flags_extra = []
+        else:
+            cmake_flags_extra = []
+        cmake_flags = [
+            flag,
+            "-DCMAKE_BUILD_TYPE=Release",
+            f"-DBUILD_SHARED_LIBS={'OFF' if is_hermetic else 'ON'}",
+            *cmake_flags_extra,
+        ]
+        if is_hermetic:
+            cmake_flags.append("-DLLAMA_CURL=OFF")
+
         with tempfile.TemporaryDirectory() as tmpdir:
             src_dir = Path(tmpdir) / "llama.cpp"
             build_dir = src_dir / "build"
@@ -297,11 +320,20 @@ def _auto_install_llama_server(
                 ["git", "clone", "--depth", "1", "https://github.com/ggml-org/llama.cpp.git", str(src_dir)],
                 check=True,
             )
-            subprocess.run(["cmake", "-B", str(build_dir), str(src_dir), flag], check=True)
-            subprocess.run(["cmake", "--build", str(build_dir), "--config", "Release", "--target", "llama-server"], check=True)
+            subprocess.run([*cmake_cmd, "-B", str(build_dir), str(src_dir), *cmake_flags], check=True, env=build_env)
+            subprocess.run(
+                [*cmake_cmd, "--build", str(build_dir), "--config", "Release", "--target", "llama-server"],
+                check=True,
+                env=build_env,
+            )
             built_bin = next(build_dir.rglob(exe_name), None)
             if built_bin:
                 shutil.copy2(built_bin, bin_dir / exe_name)
+            if not is_hermetic:
+                for pattern in ("*.so*", "*.dylib", "*.dll"):
+                    for lib in build_dir.rglob(pattern):
+                        if lib.is_file() and not lib.is_symlink():
+                            shutil.copy2(lib, bin_dir / lib.name)
 
     target_bin = bin_dir / exe_name
     if not target_bin.is_file():
@@ -312,8 +344,11 @@ def _auto_install_llama_server(
         for mach_o in [target_bin, *bin_dir.glob("*.dylib")]:
             if mach_o.is_file() and not mach_o.is_symlink():
                 try:
-                    subprocess.run(["codesign", "--force", "--deep", "-s", "-", str(mach_o)], check=False)
+                    res = subprocess.run(["codesign", "--force", "--deep", "-s", "-", str(mach_o)], check=False)
+                    if res.returncode != 0:
+                        print(f"Warning: ad-hoc codesign failed for {mach_o}; run: codesign --force --deep -s - {mach_o}")
                 except FileNotFoundError:
+                    print(f"Warning: codesign not found; sign manually on macOS: codesign --force --deep -s - {target_bin}")
                     break
     _persist_server_bin(workspace, f"bin/{exe_name}")
     print(f"Installed llama-server to {target_bin}")
