@@ -227,6 +227,7 @@ class LlamaSupervisor:
         return {
             "healthy": healthy,
             "server_url": self._get_server_url(),
+            "residency": getattr(self.config, "residency", "moderate"),
             "tier": profile.tier,
             "vram_gb": profile.vram_gb,
             "gpu_vendor": profile.gpu_vendor,

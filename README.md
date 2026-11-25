@@ -79,6 +79,7 @@ uv run pytest -v
 | `--download-models` | Downloads curated GGUF starter-pack models for your detected tier (resumable `.part` downloads). |
 | `--verify-models` | Verifies Hugging Face URLs for `--tier` (or all tiers) and suggests live GGUF alternatives on 404. |
 | `--tier` | Target VRAM tier (`6gb`, `8gb`, `12gb`, `16gb`, `24gb+`) for `--verify-models`. |
+| `--residency` | Memory residency profile (`stingy`, `moderate`, `snappy`; default `moderate`). |
 | `--models-dir` | Custom directory for GGUF model files (defaults to `<workspace>/models`). |
 | `--tui` | Launches the interactive `rich` TUI setup wizard (also auto-launched on bare `llama-mcp-install` in a TTY). |
 | `--install-service` | Generates an OS-specific user service (`systemd` on Linux, `launchd` on macOS). |
@@ -93,7 +94,9 @@ uv run pytest -v
 2. **POSIX (Linux, macOS, FreeBSD):** `~/.llama-mcp-bridge`
 3. **Windows:** `%LOCALAPPDATA%\llama-mcp-bridge`
 
-Relative paths in `bridge.ini` (`models_dir`, `models_ini`, `llama_server_bin`) resolve relative to `workspace`. See [bridge.example.ini](bridge.example.ini) for all options (`host`, `port`, `auto_spawn`, `health_timeout_s`, `request_timeout_s`, `models_ini`).
+Relative paths in `bridge.ini` (`models_dir`, `models_ini`, `llama_server_bin`) resolve relative to `workspace`. See [bridge.example.ini](bridge.example.ini) for all options (`host`, `port`, `auto_spawn`, `residency`, `health_timeout_s`, `request_timeout_s`, `models_ini`).
+
+- **Residency Profiles (`residency`):** `stingy` (`15s` idle, `1` model), `moderate` (`120s` idle, `1`–`2` models; default), `snappy` (`600s` idle, `2`–`3` models on `12gb+`).
 
 ## MCP Client Configuration (`mcp_config.json`)
 

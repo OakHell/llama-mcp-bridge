@@ -24,6 +24,7 @@ class BridgeConfig:
     models_ini: str = ""
     llama_server_bin: str = ""
     auto_spawn: bool = True
+    residency: str = "moderate"
     health_timeout_s: int = 30
     request_timeout_s: int = 90
     max_tokens: int = 4096
@@ -140,6 +141,15 @@ def load_config() -> BridgeConfig:
                     setattr(config, key, value)
             except (ValueError, TypeError):
                 pass
+
+    if config.residency:
+        config.residency = config.residency.strip().lower()
+    else:
+        config.residency = "moderate"
+    if config.residency not in ("stingy", "moderate", "snappy"):
+        raise ValueError(
+            f"Invalid residency profile {config.residency!r}; expected one of 'stingy', 'moderate', 'snappy'"
+        )
 
     workspace = resolve_path(config.workspace, config_home) if config.workspace else config_home
     config.workspace = str(workspace)

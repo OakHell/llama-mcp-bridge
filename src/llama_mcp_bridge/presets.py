@@ -9,8 +9,33 @@ from typing import Any
 
 from .hardware import SystemProfile
 
+RESIDENCY_PROFILES: dict[str, dict[str, Any]] = {
+    "stingy": {"idle_timeout_s": 15, "max_models_cap": 1},
+    "moderate": {"idle_timeout_s": 120, "max_models_cap": 1},
+    "snappy": {"idle_timeout_s": 600, "max_models_cap": 2},
+}
 
-def generate_models_ini(profile: SystemProfile, models_dir: str = "/mnt/ai/models") -> str:
+
+def resolve_residency_settings(tier: str, residency: str = "moderate") -> tuple[int, int]:
+    """Return (sleep_idle_seconds, models_max) for a given VRAM tier and residency profile."""
+    prof = residency.strip().lower()
+    if prof not in RESIDENCY_PROFILES:
+        raise ValueError(f"Invalid residency profile: {residency!r}")
+    idle_s = int(RESIDENCY_PROFILES[prof]["idle_timeout_s"])
+    if prof == "stingy":
+        models_max = 1
+    elif prof == "moderate":
+        models_max = 2 if tier in ("16gb", "24gb+") else 1
+    else:  # snappy
+        models_max = 3 if tier == "24gb+" else (2 if tier in ("12gb", "16gb") else 1)
+    return idle_s, models_max
+
+
+def generate_models_ini(
+    profile: SystemProfile,
+    models_dir: str = "/mnt/ai/models",
+    residency: str = "moderate",
+) -> str:
     """Generate a models.ini configuration string based on hardware profile.
 
     Scales context sizes, cache precision, and parallelism according to
@@ -200,9 +225,12 @@ def generate_models_ini(profile: SystemProfile, models_dir: str = "/mnt/ai/model
     tier = profile.tier if profile.tier in tier_map else "8gb"
     adj = tier_map[tier]
 
+    idle_s, models_max = resolve_residency_settings(tier, residency)
     base_config["global"]["cache-type-k"] = adj["cache-k"]
     base_config["global"]["cache-type-v"] = adj["cache-v"]
     base_config["global"]["parallel"] = adj["parallel"]
+    base_config["global"]["models-max"] = str(models_max)
+    base_config["global"]["sleep-idle-seconds"] = str(idle_s)
     base_config["vision-deep"]["no-mmproj-offload"] = adj["no_mmproj_offload"]
 
     for section, ctx_val in adj["ctx_overrides"].items():

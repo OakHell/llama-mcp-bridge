@@ -288,7 +288,7 @@ def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
         patch("llama_mcp_bridge.installer._find_llama_server", return_value=None),
         patch(
             "llama_mcp_bridge.installer.Prompt.ask",
-            side_effect=[str(custom_ws), str(custom_ws / "models"), "skip"],
+            side_effect=[str(custom_ws), str(custom_ws / "models"), "skip", "moderate"],
         ),
         patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False]),
     ):
@@ -555,3 +555,30 @@ def test_download_missing_or_non_sha256_etag_completes_gracefully():
     assert ok is True
     assert size == 123
     assert sha is None
+
+
+def test_bridge_config_residency_validation(monkeypatch, tmp_path: Path):
+    import pytest
+
+    from llama_mcp_bridge.config import load_config
+
+    cfg_home = tmp_path / "cfg"
+    cfg_home.mkdir()
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(cfg_home))
+
+    (cfg_home / "bridge.ini").write_text("[bridge]\nresidency = SNAPPY\n", encoding="utf-8")
+    assert load_config().residency == "snappy"
+
+    (cfg_home / "bridge.ini").write_text("[bridge]\nresidency = invalid_mode\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Invalid residency profile"):
+        load_config()
+
+
+def test_supervisor_get_status_reports_residency():
+    from llama_mcp_bridge.config import BridgeConfig
+    from llama_mcp_bridge.supervisor import LlamaSupervisor
+
+    sup = LlamaSupervisor(BridgeConfig(residency="stingy"))
+    with patch.object(sup, "_check_health", return_value=False):
+        status = sup.get_status()
+    assert status["residency"] == "stingy"

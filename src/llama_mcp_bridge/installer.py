@@ -466,12 +466,18 @@ def _run_tui_wizard() -> None:
         )
 
     install_svc = Confirm.ask("\nStep 4: Register background service?", default=False)
+    residency = Prompt.ask(
+        "Memory residency profile",
+        choices=["stingy", "moderate", "snappy"],
+        default="moderate",
+    )
 
     summary = Table(title="Step 5: Planned Configuration")
     summary.add_column("Setting", style="bold")
     summary.add_column("Value")
     summary.add_row("Workspace", str(workspace))
     summary.add_row("Models Dir", str(models_dir))
+    summary.add_row("Residency", residency)
     summary.add_row("llama-server", mode if not found_bin else str(found_bin))
     summary.add_row("Install Service", "Yes" if install_svc else "No")
     console.print(summary)
@@ -482,7 +488,7 @@ def _run_tui_wizard() -> None:
 
     os.environ["LLAMA_MCP_HOME"] = str(workspace)
     workspace.mkdir(parents=True, exist_ok=True)
-    ini_content = generate_models_ini(profile, models_dir=str(models_dir))
+    ini_content = generate_models_ini(profile, models_dir=str(models_dir), residency=residency)
     (workspace / "models.ini").write_text(ini_content, encoding="utf-8")
 
     specs = get_tier_model_specs(profile.tier)
@@ -497,7 +503,7 @@ def _run_tui_wizard() -> None:
     if not bridge_ini.exists():
         bridge_ini.write_text(
             f"[bridge]\nworkspace = {workspace}\nmodels_dir = {models_dir}\n"
-            f"models_ini = {workspace / 'models.ini'}\n",
+            f"models_ini = {workspace / 'models.ini'}\nresidency = {residency}\n",
             encoding="utf-8",
         )
 
@@ -534,6 +540,12 @@ def main() -> None:
     parser.add_argument("--download-models", action="store_true", help="Download curated GGUF models for tier.")
     parser.add_argument("--verify-models", action="store_true", help="Verify Hugging Face model URLs.")
     parser.add_argument("--tier", type=str, help="Target VRAM tier for --verify-models.")
+    parser.add_argument(
+        "--residency",
+        choices=["stingy", "moderate", "snappy"],
+        default="moderate",
+        help="Memory residency profile (stingy, moderate, snappy).",
+    )
     parser.add_argument("--tui", action="store_true", help="Launch interactive rich TUI wizard.")
     parser.add_argument("--models-dir", type=str, help="Path to models directory.")
 
@@ -568,7 +580,7 @@ def main() -> None:
     models_dir = Path(args.models_dir) if args.models_dir else home / "models"
 
     profile = detect_hardware()
-    ini_content = generate_models_ini(profile, models_dir=str(models_dir))
+    ini_content = generate_models_ini(profile, models_dir=str(models_dir), residency=args.residency)
 
     print(f"Mode: {args.mode}")
     print(f"Hardware: {profile.os_name}/{profile.arch} {profile.gpu_vendor} ({profile.vram_gb} GB, tier={profile.tier})")
@@ -598,6 +610,13 @@ def main() -> None:
 
     home.mkdir(parents=True, exist_ok=True)
     (home / "models.ini").write_text(ini_content, encoding="utf-8")
+    bridge_ini = home / "bridge.ini"
+    if not bridge_ini.exists():
+        bridge_ini.write_text(
+            f"[bridge]\nworkspace = {home}\nmodels_dir = {models_dir}\n"
+            f"models_ini = {home / 'models.ini'}\nresidency = {args.residency}\n",
+            encoding="utf-8",
+        )
     print(f"Wrote {home / 'models.ini'}")
 
 

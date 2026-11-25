@@ -96,3 +96,33 @@ def test_detect_hardware_cross_platform(
 
     assert profile.gpu_vendor == expected_vendor
     assert profile.tier == expected_tier
+
+
+@pytest.mark.parametrize(
+    "tier,residency,expected_idle,expected_max",
+    [
+        ("8gb", "stingy", "15", "1"),
+        ("8gb", "moderate", "120", "1"),
+        ("16gb", "moderate", "120", "2"),
+        ("12gb", "snappy", "600", "2"),
+        ("24gb+", "snappy", "600", "3"),
+    ],
+)
+def test_generate_models_ini_residency_profiles(
+    tier: str, residency: str, expected_idle: str, expected_max: str
+):
+    profile = SystemProfile(
+        os_name="linux",
+        arch="x86_64",
+        gpu_vendor="nvidia",
+        gpu_name="GPU",
+        vram_gb=16.0,
+        compute_cap="sm_86",
+        distro_family="ubuntu",
+        tier=tier,
+    )
+    ini_str = generate_models_ini(profile, models_dir="/models", residency=residency)
+    parser = configparser.ConfigParser()
+    parser.read_string(ini_str)
+    assert parser.get("*", "sleep-idle-seconds") == expected_idle
+    assert parser.get("*", "models-max") == expected_max
