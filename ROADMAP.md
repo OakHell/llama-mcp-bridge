@@ -56,3 +56,12 @@
 ### `v0.5.2` — Phase 3: Windows Interactive TUI & MCP Client Path Resolution (Shipped)
 - **Windows TUI Key Handling (`models_cli.py`)**: Handles Windows `msvcrt.getch()` two-byte arrow prefixes (`b"\xe0"` / `b"\x00"` + `H`/`P`) in `_read_key()` / `select_presets_interactive()`.
 - **MCP Client Binary Resolution (`installer.py`)**: Resolves `"command"` in `mcp_config.json` snippets to the full `.exe`/binary path on Windows or when `llama-mcp-bridge` is off `PATH`, while keeping `"llama-mcp-bridge"` when resolved on POSIX `PATH`.
+
+---
+
+## Upcoming Milestones
+
+### `v0.6.0` — Unconstrained Hugging Face & Local GGUF Models (`llama-mcp-models`)
+- **Arbitrary HF Repo & Local File Support (`llama-mcp-models add`)**: Support `llama-mcp-models add <preset> --hf <owner>/<repo>[:<quant-or-filename>]` (resolving `.gguf` and optional `mmproj` files via the Hugging Face API with resumable `.part` downloads) and `--file <path/to/model.gguf>`, allowing users either to override a built-in specialist slot or define a new custom `[preset]` section in `models.ini`.
+- **Generic Baseline Warning**: Emit a clear CLI notice when adding an uncurated Hugging Face or local GGUF model explaining that a generic hardware-tier `models.ini` entry has been generated and manual tuning (`ctx-size`, KV cache quantisation, GPU layers) in `models.ini` is up to the user.
+- **Dynamic MCP Tool Routing**: Expose custom `models.ini` sections to MCP clients via a generic `ask_preset` tool or dynamically registered `ask_<preset>` tools at bridge startup.
