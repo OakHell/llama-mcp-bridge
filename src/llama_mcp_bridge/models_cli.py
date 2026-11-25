@@ -14,6 +14,7 @@ from rich.table import Table
 from rich.text import Text
 
 from llama_mcp_bridge.config import load_config
+from llama_mcp_bridge.gguf_header import parse_gguf_header, recommend_gguf_tuning
 from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
 from llama_mcp_bridge.installer import _download_spec_list, _download_tier_models
 from llama_mcp_bridge.presets import (
@@ -184,6 +185,7 @@ def _handle_custom_add(
     models_ini: Path,
     models_dir: Path,
     dry_run: bool,
+    tune_mode: str = "conservative",
 ) -> None:
     """Resolve and add an unconstrained Hugging Face (--hf) or local (--file) GGUF model."""
     if hf_spec:
@@ -229,11 +231,48 @@ def _handle_custom_add(
         print(f"[DRY-RUN] Would add custom preset '{preset_name}' ({model_dest}) to {models_ini}")
         return
 
-    merge_custom_preset_ini(models_ini, profile, residency, models_dir, preset_name, model_dest, mmproj_dest)
-    print(
-        f"Notice: Added uncurated model '{preset_name}' with a generic baseline models.ini entry. "
-        f"Manual tuning (ctx-size, KV cache quantisation, GPU layers) in {models_ini} is up to you."
+    rec_ctx: int | None = None
+    rec_ngl: int | None = None
+    try:
+        meta = parse_gguf_header(model_dest)
+        rec = recommend_gguf_tuning(meta, profile, tune_mode=tune_mode)
+        rec_ctx = rec.ctx_size
+        rec_ngl = rec.n_gpu_layers
+        kv_count = sum(1 for h in meta.head_count_kv if h > 0)
+        ssm_count = len(meta.head_count_kv) - kv_count
+        swa_count = sum(1 for s in meta.swa_layers if s)
+        print(
+            f"GGUF Header ({meta.architecture}): {meta.n_layers} layers "
+            f"(KV={kv_count}, SWA={swa_count}, SSM={ssm_count}), max_ctx={meta.max_context_length}"
+        )
+        print(
+            f"Auto-Tune ({rec.tune_mode}): n-gpu-layers={rec.n_gpu_layers}, ctx-size={rec.ctx_size} "
+            f"(est. KV={rec.kv_bytes_at_ctx / (1024**2):.1f} MiB) — {rec.notes}"
+        )
+    except (ValueError, OSError):
+        pass
+
+    merge_custom_preset_ini(
+        models_ini,
+        profile,
+        residency,
+        models_dir,
+        preset_name,
+        model_dest,
+        mmproj_dest,
+        ctx_size=rec_ctx,
+        n_gpu_layers=rec_ngl,
     )
+    if rec_ctx is not None:
+        print(
+            f"Disclaimer: Heuristic auto-tuning for '{preset_name}' is an estimate; "
+            f"manual adjustment in {models_ini} may still be needed."
+        )
+    else:
+        print(
+            f"Notice: Added uncurated model '{preset_name}' with a generic baseline models.ini entry. "
+            f"Manual tuning (ctx-size, KV cache quantisation, GPU layers) in {models_ini} is up to you."
+        )
     if preset_name not in _VALID_PRESETS:
         print("Reminder: Restart active MCP clients (Claude Code, Cursor, Cline, Antigravity) so tools/list refreshes.")
 
@@ -250,6 +289,12 @@ def main() -> None:
     source_group.add_argument("--hf", type=str, metavar="REPO[:QUANT]", help="Add from any Hugging Face repo.")
     source_group.add_argument("--file", type=str, metavar="PATH", help="Add from a local .gguf file.")
     parser.add_argument("--mmproj", type=str, metavar="PATH_OR_NAME", help="Optional mmproj filename or path.")
+    parser.add_argument(
+        "--tune-mode",
+        choices=["conservative", "approximate"],
+        default="conservative",
+        help="Heuristic auto-tuning mode for custom GGUF models.",
+    )
     parser.add_argument("-y", "--yes", action="store_true", help="Confirm destructive removals.")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files.")
     args = parser.parse_args()
@@ -278,6 +323,7 @@ def main() -> None:
             models_ini,
             models_dir,
             args.dry_run,
+            tune_mode=args.tune_mode,
         )
         return
     if add_targets:

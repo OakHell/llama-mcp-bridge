@@ -622,8 +622,10 @@ def merge_custom_preset_ini(
     preset_name: str,
     model_path: Path | str,
     mmproj_path: Path | str | None = None,
+    ctx_size: int | None = None,
+    n_gpu_layers: int | None = None,
 ) -> str:
-    """Merge a custom or overridden [preset] entry with generic hardware-tier defaults into models.ini."""
+    """Merge a custom or overridden [preset] entry with hardware-tier or tuned defaults into models.ini."""
     clean_name = preset_name.strip()
     if not clean_name or clean_name == "*":
         raise ValueError(f"Invalid preset name: {preset_name!r}")
@@ -644,12 +646,14 @@ def merge_custom_preset_ini(
     if "*" not in merged and "*" in fresh:
         merged["*"] = dict(fresh["*"])
 
-    ctx_size = "4096" if profile.tier == "6gb" else "8192"
+    resolved_ctx = str(ctx_size) if ctx_size is not None else ("4096" if profile.tier == "6gb" else "8192")
     entry: dict[str, str] = {
         "model": str(model_path),
-        "ctx-size": ctx_size,
+        "ctx-size": resolved_ctx,
         "temp": "0.3",
     }
+    if n_gpu_layers is not None:
+        entry["n-gpu-layers"] = str(n_gpu_layers)
     if mmproj_path:
         entry["mmproj"] = str(mmproj_path)
     merged[clean_name] = entry
