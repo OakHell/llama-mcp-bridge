@@ -43,7 +43,7 @@
 
 ---
 
-## Planned Releases — Cross-Platform Hardening (`v0.5.x`)
+## Shipped Releases — Cross-Platform Hardening (`v0.5.x`)
 
 ### `v0.5.0` — Phase 1: Cross-Platform Binary Extraction & Runtime Libraries (Shipped)
 - **Windows CUDA Runtime Co-Location (`installer.py`)**: Rejects `cudart-llama-*.zip` runtime-only archives in `_select_llama_release_asset()` and automatically fetches + extracts companion `cudart` DLLs alongside `llama-server.exe` on Windows NVIDIA setups.
@@ -56,6 +56,10 @@
 ### `v0.5.2` — Phase 3: Windows Interactive TUI & MCP Client Path Resolution (Shipped)
 - **Windows TUI Key Handling (`models_cli.py`)**: Handles Windows `msvcrt.getch()` two-byte arrow prefixes (`b"\xe0"` / `b"\x00"` + `H`/`P`) in `_read_key()` / `select_presets_interactive()`.
 - **MCP Client Binary Resolution (`installer.py`)**: Resolves `"command"` in `mcp_config.json` snippets to the full `.exe`/binary path on Windows or when `llama-mcp-bridge` is off `PATH`, while keeping `"llama-mcp-bridge"` when resolved on POSIX `PATH`.
+
+### `v0.5.3` — Source Build Divergence & Documentation Sync (Shipped)
+- **`source-hermetic` vs. `source-system` (`installer.py`)**: `source-hermetic` builds a static binary (`-DBUILD_SHARED_LIBS=OFF -DLLAMA_CURL=OFF`) in a scrubbed environment with `uvx cmake` fallback, whereas `source-system` builds dynamically (`-DBUILD_SHARED_LIBS=ON`) with host toolchains and copies built shared libraries into `<workspace>/bin/`.
+- **Docs Sync (`README.md`)**: Updated CLI flags, source build caveats (Windows host compilers, macOS Gatekeeper/`codesign`), and the Roadmap summary.
 
 ---
 
