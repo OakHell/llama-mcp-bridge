@@ -288,7 +288,7 @@ def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
         patch("llama_mcp_bridge.installer._find_llama_server", return_value=None),
         patch(
             "llama_mcp_bridge.installer.Prompt.ask",
-            side_effect=[str(custom_ws), str(custom_ws / "models"), "skip", "moderate"],
+            side_effect=[str(custom_ws), str(custom_ws / "models"), "moderate", "skip"],
         ),
         patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False, False]),
     ):
@@ -660,3 +660,54 @@ def test_configure_client_prints_json_and_url_without_mutating(capsys, monkeypat
     assert "https://docs.cursor.com/context/model-context-protocol" in out
     assert json.dumps(str(tmp_path)) in out
     assert "mcpServers" in out
+
+
+def test_auto_install_prebuilt_falls_back_to_recent_releases(tmp_path: Path):
+    import io
+    import json
+    import tarfile
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _auto_install_llama_server
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        info = tarfile.TarInfo("llama-server")
+        payload = b"binary"
+        info.size = len(payload)
+        tf.addfile(info, io.BytesIO(payload))
+    tgz_bytes = buf.getvalue()
+
+    latest_json = json.dumps({"assets": [{"name": "nightly-tag.txt"}]}).encode("utf-8")
+    releases_json = json.dumps(
+        [
+            {"draft": True, "assets": [{"name": "llama-b9999-bin-ubuntu-x64.tar.gz"}]},
+            {
+                "draft": False,
+                "assets": [
+                    {
+                        "name": "llama-b12359-bin-ubuntu-x64.tar.gz",
+                        "browser_download_url": "https://example.com/b12359.tar.gz",
+                    }
+                ],
+            },
+        ]
+    ).encode("utf-8")
+
+    r1 = MagicMock()
+    r1.__enter__.return_value = r1
+    r1.read.return_value = latest_json
+
+    r2 = MagicMock()
+    r2.__enter__.return_value = r2
+    r2.read.return_value = releases_json
+
+    r3 = MagicMock()
+    r3.__enter__.return_value = r3
+    r3.read.return_value = tgz_bytes
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "ubuntu", "6gb")
+    with patch("llama_mcp_bridge.installer.urllib.request.urlopen", side_effect=[r1, r2, r3]):
+        _auto_install_llama_server(profile, "prebuilt", tmp_path, dry_run=False, yes=True)
+
+    assert (tmp_path / "bin" / "llama-server").read_bytes() == b"binary"

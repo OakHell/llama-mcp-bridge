@@ -193,8 +193,17 @@ def _auto_install_llama_server(
         api_url = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
         with urllib.request.urlopen(api_url, timeout=15) as resp:
             release = json.loads(resp.read().decode("utf-8"))
-        assets = release.get("assets", [])
-        match = _select_llama_release_asset(assets, profile)
+        match = _select_llama_release_asset(release.get("assets", []), profile)
+        if not match:
+            list_url = "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=10"
+            with urllib.request.urlopen(list_url, timeout=15) as resp:
+                releases = json.loads(resp.read().decode("utf-8"))
+            for rel in releases:
+                if rel.get("draft"):
+                    continue
+                match = _select_llama_release_asset(rel.get("assets", []), profile)
+                if match:
+                    break
         if not match:
             raise RuntimeError(f"No prebuilt llama.cpp release asset found for {profile.os_name}/{profile.arch}")
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -603,22 +612,23 @@ def _run_tui_wizard() -> None:
     models_dir = Path(models_str).expanduser()
     found_bin = _find_llama_server(workspace, cfg.llama_server_bin)
 
-    mode = "skip"
-    if not found_bin:
-        mode = Prompt.ask(
-            "\nStep 3: llama-server install mode",
-            choices=["prebuilt", "system-bin", "source-hermetic", "source-system", "skip"],
-            default="prebuilt",
-        )
-
-    install_svc = Confirm.ask("\nStep 4: Register background service?", default=False)
     residency = Prompt.ask(
-        "Memory residency profile",
+        "\nStep 3: Memory residency profile",
         choices=["stingy", "moderate", "snappy"],
         default="moderate",
     )
 
-    summary = Table(title="Step 5: Planned Configuration")
+    mode = "skip"
+    if not found_bin:
+        mode = Prompt.ask(
+            "\nStep 4: llama-server install mode",
+            choices=["prebuilt", "system-bin", "source-hermetic", "source-system", "skip"],
+            default="prebuilt",
+        )
+
+    install_svc = Confirm.ask("\nStep 5: Register background service?", default=False)
+
+    summary = Table(title="Step 6: Planned Configuration")
     summary.add_column("Setting", style="bold")
     summary.add_column("Value")
     summary.add_row("Workspace", str(workspace))
