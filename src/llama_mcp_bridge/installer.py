@@ -666,6 +666,24 @@ def _run_doctor() -> int:
     return 1 if failed else 0
 
 
+def _resolve_bridge_command() -> str:
+    """Resolve llama-mcp-bridge command cleanly on POSIX PATH or to full executable path."""
+    which = shutil.which("llama-mcp-bridge")
+    if which:
+        if sys.platform == "win32":
+            return which
+        path_dirs = {os.path.normpath(p) for p in os.environ.get("PATH", "").split(os.pathsep) if p}
+        if os.path.normpath(str(Path(which).parent)) in path_dirs:
+            return "llama-mcp-bridge"
+        return which
+    exe_name = "llama-mcp-bridge.exe" if sys.platform == "win32" else "llama-mcp-bridge"
+    candidate = Path(sys.executable).parent / exe_name
+    if candidate.exists():
+        return str(candidate)
+    scripts_dir = Path(sys.prefix) / ("Scripts" if sys.platform == "win32" else "bin")
+    return str(scripts_dir / exe_name)
+
+
 def _configure_client(harness: str) -> None:
     """Print zero-mutation MCP client JSON snippet, target config path, and official guide URL."""
     console = Console()
@@ -681,7 +699,7 @@ def _configure_client(harness: str) -> None:
         {
             "mcpServers": {
                 "local-ai": {
-                    "command": "llama-mcp-bridge",
+                    "command": _resolve_bridge_command(),
                     "env": {"LLAMA_MCP_HOME": cfg.workspace},
                 }
             }
@@ -898,7 +916,7 @@ def _run_tui_wizard() -> None:
         _generate_service_file(dry_run=False)
 
     mcp_snippet = json.dumps(
-        {"mcpServers": {"local-ai": {"command": "llama-mcp-bridge", "env": {"LLAMA_MCP_HOME": str(workspace)}}}},
+        {"mcpServers": {"local-ai": {"command": _resolve_bridge_command(), "env": {"LLAMA_MCP_HOME": str(workspace)}}}},
         indent=2,
     )
     console.print(Panel(mcp_snippet, title="Add to mcp_config.json", border_style="green"))

@@ -53,6 +53,6 @@
 - **Windows (`_generate_service_file()`)**: Passes `/F` to `schtasks /Create`, wraps `/TR` batch paths containing spaces in quotes, and launches `start-llama-server.bat` windowlessly via `conhost.exe --headless`.
 - **macOS (`_generate_service_file()` & `_uninstall_bridge()`)**: Migrated from legacy `launchctl load/unload` to `launchctl bootstrap gui/<uid>` / `bootout`, and includes `<key>WorkingDirectory</key>` plus `<key>EnvironmentVariables</key>` (`LLAMA_MCP_HOME`) in the `.plist`.
 
-### `v0.5.2` — Phase 3: Windows Interactive TUI & MCP Client Path Resolution
-- **Windows TUI Key Handling (`models_cli.py`)**: Handle Windows `msvcrt.getch()` two-byte arrow prefixes (`\xe0` / `\x00` + `H`/`P`) in `select_presets_interactive()`.
-- **MCP Client Binary Resolution (`installer.py`)**: Resolve `shutil.which("llama-mcp-bridge")` to the full `.exe`/binary path in the `mcp_config.json` snippet when the script directory is not yet on `PATH`.
+### `v0.5.2` — Phase 3: Windows Interactive TUI & MCP Client Path Resolution (Shipped)
+- **Windows TUI Key Handling (`models_cli.py`)**: Handles Windows `msvcrt.getch()` two-byte arrow prefixes (`b"\xe0"` / `b"\x00"` + `H`/`P`) in `_read_key()` / `select_presets_interactive()`.
+- **MCP Client Binary Resolution (`installer.py`)**: Resolves `"command"` in `mcp_config.json` snippets to the full `.exe`/binary path on Windows or when `llama-mcp-bridge` is off `PATH`, while keeping `"llama-mcp-bridge"` when resolved on POSIX `PATH`.

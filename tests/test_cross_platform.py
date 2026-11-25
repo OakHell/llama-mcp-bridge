@@ -1239,3 +1239,57 @@ def test_macos_launchd_plist_env_and_bootstrap_bootout(monkeypatch, tmp_path: Pa
     un_cmds = [c.args[0] for c in mock_un_run.call_args_list]
     assert any(c[:2] == ["launchctl", "bootout"] for c in un_cmds)
     assert not plist_path.exists()
+
+
+def test_windows_msvcrt_two_byte_arrow_keys():
+    import types
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.models_cli import select_presets_interactive
+
+    fake_msvcrt = types.SimpleNamespace(
+        getch=MagicMock(side_effect=[b"\xe0", b"P", b" ", b"\x00", b"H", b"\r"])
+    )
+    profile = SystemProfile("windows", "AMD64", "cpu", "CPU", 0.0, "", "windows", "6gb")
+    with (
+        patch("llama_mcp_bridge.models_cli.sys.platform", "win32"),
+        patch.dict("sys.modules", {"msvcrt": fake_msvcrt}),
+        patch("llama_mcp_bridge.models_cli.sys.stdin.isatty", return_value=True),
+    ):
+        chosen = select_presets_interactive(profile, initial_selected=["digest"])
+
+    assert chosen == ["digest", "coder-fast"]
+
+
+def test_resolve_bridge_command_and_mcp_snippet(capsys, monkeypatch, tmp_path: Path):
+    import sys as _sys
+
+    from llama_mcp_bridge.installer import _configure_client, _resolve_bridge_command
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    with (
+        patch("llama_mcp_bridge.installer.sys.platform", "linux"),
+        patch("llama_mcp_bridge.installer.shutil.which", return_value="/usr/bin/llama-mcp-bridge"),
+    ):
+        assert _resolve_bridge_command() == "llama-mcp-bridge"
+
+    with (
+        patch("llama_mcp_bridge.installer.sys.platform", "linux"),
+        patch("llama_mcp_bridge.installer.shutil.which", return_value=None),
+    ):
+        resolved = _resolve_bridge_command()
+        assert resolved.endswith("llama-mcp-bridge")
+        assert str(Path(_sys.executable).parent) in resolved or str(Path(_sys.prefix) / "bin") in resolved
+
+    win_exe = r"C:\Users\First Last\.local\bin\llama-mcp-bridge.exe"
+    with (
+        patch("llama_mcp_bridge.installer.sys.platform", "win32"),
+        patch("llama_mcp_bridge.installer.shutil.which", return_value=win_exe),
+    ):
+        assert _resolve_bridge_command() == win_exe
+        _configure_client("cursor")
+
+    out = capsys.readouterr().out
+    assert "llama-mcp-bridge.exe" in out

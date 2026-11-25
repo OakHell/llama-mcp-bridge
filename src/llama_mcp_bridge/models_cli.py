@@ -40,11 +40,12 @@ def _read_key() -> str:
     if sys.platform == "win32":
         import msvcrt
 
-        ch = msvcrt.getwch()
-        if ch in ("\x00", "\xe0"):
-            nxt = msvcrt.getwch()
-            return {"H": "UP", "P": "DOWN"}.get(nxt, "")
-        return ch
+        raw = msvcrt.getch()
+        if raw in (b"\x00", b"\xe0", "\x00", "\xe0"):
+            nxt = msvcrt.getch()
+            code = nxt.decode("latin-1") if isinstance(nxt, bytes) else nxt
+            return {"H": "UP", "P": "DOWN"}.get(code, "")
+        return raw.decode("utf-8", errors="ignore") if isinstance(raw, bytes) else raw
     import termios
     import tty
 
