@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup UV
+      uses: astral-sh/setup-uv@v5
+
+    - name: Sync UV
+      run: uv sync --dev
+
+    - name: Run pytest
+      run: uv run pytest -v
+
+    - name: Run llama-mcp-install dry-run
+      run: uv run llama-mcp-install --dry-run

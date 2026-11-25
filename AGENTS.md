@@ -20,3 +20,14 @@ Delegate heavy inspection, boilerplate, auditing, and verification to the `local
 ## 4. Verification Standard
 - Every phase must end with `uv run pytest` passing with zero errors before moving to the next phase.
 - Any changes to `hardware.py` must pass the golden 8 GB NVIDIA `sm_86` test asserting exact parity with `/mnt/ai/models.ini` tuning parameters.
+
+## 5. Anti-Truncation & Completeness Rules
+- **Copy-Then-Patch for Existing Code:** Never ask `local-ai` tools to regenerate files over 150 lines from scratch. Always copy the `/mnt/ai/` reference file first (`cp /mnt/ai/local_bridge.py src/llama_mcp_bridge/bridge.py`) and apply targeted, small edits.
+- **Small Modular Files:** Keep new modules (`config.py`, `supervisor.py`, `hardware.py`, `installer.py`) under ~180 lines each so `ask_coder` / `ask_coder_long` never exhaust `max_tokens` mid-file.
+- **Hard Phase Gate:** Before advancing to the next phase, run:
+  1. `uv run python -m compileall src tests` (catches any truncated syntax immediately)
+  2. `uv run pytest -v` (verifies all expected modules and tests exist and pass)
+- **No Silent Stubs:** Never leave `TODO`, `pass`, or placeholder functions in `src/llama_mcp_bridge/`.
+
+## 6. Single-Responsibility Tool Calls
+- **One Module Per `local-ai` Call:** Never ask `ask_coder` or `ask_coder_long` to combine hardware probing, INI/config generation, and CLI logic in a single prompt. Split distinct concerns into separate files (`hardware.py` for probes vs. `presets.py` for `models.ini` generation) and generate one file per tool call.
