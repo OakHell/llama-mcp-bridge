@@ -100,7 +100,7 @@ Manage, add, or remove specialist presets anytime after installation without re-
 - **List Presets:** `llama-mcp-models list` displays all 9 presets, their `models.ini` status, tier GGUF filenames, disk presence, and sizes.
 - **Add Presets:** `llama-mcp-models add digest coder` (or `--add`) merges the requested presets into `models.ini` without duplicating existing `[section]` headers and downloads their GGUFs.
 - **Remove Presets Safely:** `llama-mcp-models remove vision` (or `--remove`) prompts for confirmation (`-y` / `--yes` skips the prompt; `--dry-run` previews changes), removes the preset sections from `models.ini`, and only deletes `.gguf` / `mmproj` files on disk if no remaining preset in `models.ini` references them.
-- **Custom Models (`--hf` / `--file`):** `llama-mcp-models add my_model --hf <owner>/<repo>[:<quant-or-filename>]` (with automatic `mmproj` detection and resumable `.part` + SHA-256 verification) or `--file <path/to/model.gguf>` (`--mmproj` optional) adds any Hugging Face or local GGUF model with a generic baseline `models.ini` entry, prints a tuning & client-restart notice, and exposes it to MCP clients via `ask_preset` or dynamically registered `ask_<preset>` tools.
+- **Custom Models (`--hf` / `--file` & `--tune-mode`):** `llama-mcp-models add my_model --hf <owner>/<repo>[:<quant-or-filename>]` (with automatic `mmproj` detection and resumable `.part` + SHA-256 verification) or `--file <path/to/model.gguf>` (`--mmproj` optional) inspects GGUF binary headers to auto-tune `n-gpu-layers` and `ctx-size` (`--tune-mode conservative|approximate`, default `conservative`), prints a heuristic tuning & client-restart notice, and exposes the preset via `ask_preset` or dynamically registered `ask_<preset>` tools.
 
 ## Configuration (`LLAMA_MCP_HOME` & `bridge.ini`)
 
@@ -163,7 +163,7 @@ uv run ruff check .
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for shipped releases (`v0.1.0`–`v0.6.0`, including custom `--hf` / `--file` GGUFs, dynamic `ask_preset` routing, and global `--register` workspace enrolment) and upcoming milestones: `v0.7.0` (GGUF binary header KV-cache heuristics via `--tune-mode conservative|approximate`) and `v0.8.0` (bundled `skills/llama-mcp-setup/SKILL.md` + `llama-mcp-install --install-skill`).
+See [ROADMAP.md](ROADMAP.md) for shipped releases (`v0.1.0`–`v0.7.0`, including custom `--hf` / `--file` GGUFs, GGUF binary header KV-cache auto-tuning via `--tune-mode`, dynamic `ask_preset` routing, and global `--register` workspace enrolment) and upcoming `v0.8.0` (bundled `skills/llama-mcp-setup/SKILL.md` + `llama-mcp-install --install-skill`).
 
 ## License
 
