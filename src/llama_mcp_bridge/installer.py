@@ -2,6 +2,7 @@
 
 import argparse
 import configparser
+import hashlib
 import json
 import os
 import shutil
@@ -26,8 +27,8 @@ from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
 from llama_mcp_bridge.presets import (
     generate_models_ini,
     get_tier_model_specs,
+    probe_model_metadata,
     search_hf_gguf_models,
-    verify_model_url,
     verify_tier_models,
 )
 
@@ -350,6 +351,31 @@ def _generate_service_file(dry_run: bool) -> None:
         return
 
 
+def _compute_sha256(path: Path) -> str:
+    """Compute SHA-256 hex digest of a file in 1 MiB streaming chunks."""
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        while True:
+            chunk = fh.read(1024 * 1024)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _verify_and_finalize_part(part: Path, target: Path, filename: str, expected_sha256: str | None) -> None:
+    """Verify .part SHA-256 when expected_sha256 is present, then atomically rename."""
+    if expected_sha256:
+        actual = _compute_sha256(part)
+        if actual.lower() != expected_sha256.lower():
+            part.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"SHA-256 mismatch for {filename}: expected {expected_sha256}, got {actual}"
+            )
+        print(f"Verified SHA-256: {actual[:12]}...")
+    part.replace(target)
+
+
 def _download_tier_models(profile: SystemProfile, models_dir: Path, dry_run: bool = False) -> None:
     """Download curated GGUF models for the detected tier with .part resume support."""
     specs = get_tier_model_specs(profile.tier)
@@ -364,7 +390,7 @@ def _download_tier_models(profile: SystemProfile, models_dir: Path, dry_run: boo
             print(f"[DRY-RUN] Would download {spec['filename']} ({spec['size_gb']} GB) from {spec['url']}")
             continue
 
-        ok, _ = verify_model_url(spec["url"])
+        ok, _, expected_sha256 = probe_model_metadata(spec["url"])
         if not ok:
             print(f"WARNING: {spec['filename']} not found at {spec['url']}; skipping.")
             stem = spec["filename"].replace(".gguf", "").split("-")[0]
@@ -398,10 +424,10 @@ def _download_tier_models(profile: SystemProfile, models_dir: Path, dry_run: boo
                                 break
                             fh.write(chunk)
                             progress.update(task, advance=len(chunk))
-            part.replace(target)
+            _verify_and_finalize_part(part, target, spec["filename"], expected_sha256)
         except urllib.error.HTTPError as err:
             if err.code == 416 and part.exists():
-                part.replace(target)
+                _verify_and_finalize_part(part, target, spec["filename"], expected_sha256)
             else:
                 raise
 

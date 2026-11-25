@@ -291,8 +291,8 @@ def get_tier_model_specs(tier: str) -> list[dict[str, Any]]:
     return list(TIER_MODEL_REGISTRY.get(tier, TIER_MODEL_REGISTRY["8gb"]))
 
 
-def verify_model_url(url: str, timeout: float = 10.0) -> tuple[bool, int | None]:
-    """Check whether a Hugging Face model URL exists via HTTP HEAD."""
+def probe_model_metadata(url: str, timeout: float = 5.0) -> tuple[bool, int | None, str | None]:
+    """Check whether a Hugging Face URL exists and return (ok, size_bytes, expected_sha256)."""
     req = urllib.request.Request(
         url,
         method="HEAD",
@@ -304,10 +304,22 @@ def verify_model_url(url: str, timeout: float = 10.0) -> tuple[bool, int | None]
             if status in (200, 302):
                 raw_size = resp.headers.get("X-Linked-Size") or resp.headers.get("Content-Length")
                 size_bytes = int(raw_size) if raw_size and raw_size.isdigit() else None
-                return True, size_bytes
+                raw_etag = (resp.headers.get("X-Linked-ETag") or "").strip().strip('"').lower()
+                sha256 = (
+                    raw_etag
+                    if len(raw_etag) == 64 and all(c in "0123456789abcdef" for c in raw_etag)
+                    else None
+                )
+                return True, size_bytes, sha256
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError):
-        return False, None
-    return False, None
+        return False, None, None
+    return False, None, None
+
+
+def verify_model_url(url: str, timeout: float = 10.0) -> tuple[bool, int | None]:
+    """Check whether a Hugging Face model URL exists via HTTP HEAD."""
+    ok, size_bytes, _ = probe_model_metadata(url, timeout=timeout)
+    return ok, size_bytes
 
 
 def search_hf_gguf_models(query: str, limit: int = 5, timeout: float = 10.0) -> list[dict[str, Any]]:

@@ -333,7 +333,7 @@ def test_download_tier_models_resumes_part_with_range(tmp_path: Path):
 
     profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "8gb")
     with (
-        patch("llama_mcp_bridge.installer.verify_model_url", return_value=(True, 6)),
+        patch("llama_mcp_bridge.installer.probe_model_metadata", return_value=(True, 6, None)),
         patch("llama_mcp_bridge.installer.urllib.request.urlopen", return_value=resp) as mock_url,
     ):
         _download_tier_models(profile, tmp_path, dry_run=False)
@@ -463,7 +463,7 @@ def test_download_tier_models_resumed_progress_totals(tmp_path: Path):
 
     profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
     with (
-        patch("llama_mcp_bridge.installer.verify_model_url", return_value=(True, 7)),
+        patch("llama_mcp_bridge.installer.probe_model_metadata", return_value=(True, 7, None)),
         patch("llama_mcp_bridge.installer.urllib.request.urlopen", return_value=resp),
         patch("llama_mcp_bridge.installer.Progress") as mock_progress_cls,
     ):
@@ -473,3 +473,85 @@ def test_download_tier_models_resumed_progress_totals(tmp_path: Path):
     mock_progress.add_task.assert_called_once_with(
         f"Downloading {first}", total=7, completed=3
     )
+
+
+def test_download_sha256_valid_etag_renames(tmp_path: Path, capsys):
+    import hashlib
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _download_tier_models
+    from llama_mcp_bridge.presets import get_tier_model_specs
+
+    specs = get_tier_model_specs("6gb")
+    first = specs[0]["filename"]
+    for spec in specs[1:]:
+        (tmp_path / spec["filename"]).write_bytes(b"done")
+
+    payload = b"valid-gguf-payload"
+    expected = hashlib.sha256(payload).hexdigest().upper()
+
+    head_resp = MagicMock()
+    head_resp.__enter__.return_value = head_resp
+    head_resp.status = 200
+    head_resp.headers = {"X-Linked-Size": str(len(payload)), "X-Linked-ETag": f'"{expected}"'}
+
+    get_resp = MagicMock()
+    get_resp.__enter__.return_value = get_resp
+    get_resp.status = 200
+    get_resp.headers = {"Content-Length": str(len(payload))}
+    get_resp.read.side_effect = [payload, b""]
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
+    with patch("urllib.request.urlopen", side_effect=[head_resp, get_resp]):
+        _download_tier_models(profile, tmp_path, dry_run=False)
+
+    assert (tmp_path / first).read_bytes() == payload
+    assert not (tmp_path / f"{first}.part").exists()
+    assert "Verified SHA-256:" in capsys.readouterr().out
+
+
+def test_download_sha256_mismatch_deletes_part_and_raises(tmp_path: Path):
+    import pytest
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _download_tier_models
+    from llama_mcp_bridge.presets import get_tier_model_specs
+
+    specs = get_tier_model_specs("6gb")
+    first = specs[0]["filename"]
+    for spec in specs[1:]:
+        (tmp_path / spec["filename"]).write_bytes(b"done")
+
+    bad_sha = "0" * 64
+    get_resp = MagicMock()
+    get_resp.__enter__.return_value = get_resp
+    get_resp.status = 200
+    get_resp.headers = {"Content-Length": "7"}
+    get_resp.read.side_effect = [b"corrupt", b""]
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
+    with (
+        patch("llama_mcp_bridge.installer.probe_model_metadata", return_value=(True, 7, bad_sha)),
+        patch("llama_mcp_bridge.installer.urllib.request.urlopen", return_value=get_resp),
+        pytest.raises(RuntimeError, match="SHA-256 mismatch"),
+    ):
+        _download_tier_models(profile, tmp_path, dry_run=False)
+
+    assert not (tmp_path / first).exists()
+    assert not (tmp_path / f"{first}.part").exists()
+
+
+def test_download_missing_or_non_sha256_etag_completes_gracefully():
+    from llama_mcp_bridge.presets import probe_model_metadata
+
+    head_resp = MagicMock()
+    head_resp.__enter__.return_value = head_resp
+    head_resp.status = 200
+    head_resp.headers = {"Content-Length": "123", "X-Linked-ETag": '"weak-etag-not-sha256"'}
+
+    with patch("llama_mcp_bridge.presets.urllib.request.urlopen", return_value=head_resp):
+        ok, size, sha = probe_model_metadata("https://huggingface.co/test/model.gguf")
+
+    assert ok is True
+    assert size == 123
+    assert sha is None
