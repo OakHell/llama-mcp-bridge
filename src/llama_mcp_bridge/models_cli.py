@@ -2,6 +2,7 @@
 
 import argparse
 import configparser
+import shutil
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -14,12 +15,14 @@ from rich.text import Text
 
 from llama_mcp_bridge.config import load_config
 from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
-from llama_mcp_bridge.installer import _download_tier_models
+from llama_mcp_bridge.installer import _download_spec_list, _download_tier_models
 from llama_mcp_bridge.presets import (
     _VALID_PRESETS,
     get_tier_model_specs,
+    merge_custom_preset_ini,
     merge_models_ini,
     remove_models_from_ini,
+    resolve_hf_gguf_repo,
 )
 
 _PRESET_DESCRIPTIONS: dict[str, str] = {
@@ -123,11 +126,13 @@ def select_presets_interactive(
             live.update(_render_selector(cursor), refresh=True)
 
 
-def _configured_presets(models_ini: Path) -> set[str]:
+def _configured_presets(models_ini: Path, include_custom: bool = False) -> set[str]:
     if not models_ini.is_file():
         return set()
     cp = configparser.ConfigParser()
     cp.read(models_ini, encoding="utf-8")
+    if include_custom:
+        return {s for s in cp.sections() if s != "*"}
     return {s for s in cp.sections() if s in _VALID_PRESETS}
 
 
@@ -137,7 +142,7 @@ def _preset_total_size_gb(tier: str, preset: str) -> float:
 
 def _print_models_list(profile: SystemProfile, models_ini: Path, models_dir: Path) -> None:
     console = Console()
-    configured = _configured_presets(models_ini)
+    configured = _configured_presets(models_ini, include_custom=True)
     table = Table(title=f"llama-mcp-models (tier={profile.tier})")
     table.add_column("Preset", style="bold")
     table.add_column("Configured (models.ini)")
@@ -155,7 +160,82 @@ def _print_models_list(profile: SystemProfile, models_ini: Path, models_dir: Pat
         disk_badge = "[green]YES[/green]" if on_disk else "[dim]NO[/dim]"
         size_str = f"{_preset_total_size_gb(profile.tier, name):.1f} GB" if p_specs else "-"
         table.add_row(name, cfg_badge, disk_badge, size_str, fname)
+    custom_names = sorted(configured - set(_VALID_PRESETS))
+    if custom_names and models_ini.is_file():
+        cp = configparser.ConfigParser()
+        cp.read(models_ini, encoding="utf-8")
+        for cname in custom_names:
+            mpath = Path(cp.get(cname, "model", fallback=""))
+            mmpath = Path(cp.get(cname, "mmproj", fallback="")) if cp.has_option(cname, "mmproj") else None
+            fname = f"{mpath.name} (+ {mmpath.name})" if mmpath else (mpath.name or "-")
+            on_disk = mpath.is_file() and (mmpath is None or mmpath.is_file())
+            disk_badge = "[green]YES[/green]" if on_disk else "[dim]NO[/dim]"
+            table.add_row(f"{cname} [dim](custom)[/dim]", "[green]YES[/green]", disk_badge, "-", fname)
     console.print(table)
+
+
+def _handle_custom_add(
+    preset_name: str,
+    hf_spec: str | None,
+    file_path: str | None,
+    mmproj_hint: str | None,
+    profile: SystemProfile,
+    residency: str,
+    models_ini: Path,
+    models_dir: Path,
+    dry_run: bool,
+) -> None:
+    """Resolve and add an unconstrained Hugging Face (--hf) or local (--file) GGUF model."""
+    if hf_spec:
+        repo_id, model_file, mmproj_file = resolve_hf_gguf_repo(hf_spec, mmproj_hint=mmproj_hint)
+        specs = [
+            {
+                "role": preset_name,
+                "filename": Path(model_file).name,
+                "url": f"https://huggingface.co/{repo_id}/resolve/main/{model_file}",
+                "size_gb": 0,
+            }
+        ]
+        if mmproj_file:
+            specs.append(
+                {
+                    "role": f"{preset_name}-mmproj",
+                    "filename": Path(mmproj_file).name,
+                    "url": f"https://huggingface.co/{repo_id}/resolve/main/{mmproj_file}",
+                    "size_gb": 0,
+                }
+            )
+        _download_spec_list(specs, models_dir, dry_run=dry_run)
+        model_dest = models_dir / Path(model_file).name
+        mmproj_dest = (models_dir / Path(mmproj_file).name) if mmproj_file else None
+    else:
+        src = Path(file_path or "").expanduser().resolve()
+        if not src.is_file():
+            raise FileNotFoundError(f"Local GGUF file not found: {src}")
+        models_dir.mkdir(parents=True, exist_ok=True)
+        model_dest = models_dir / src.name
+        if not dry_run and src != model_dest.resolve():
+            shutil.copy2(src, model_dest)
+        mmproj_dest = None
+        if mmproj_hint:
+            mm_src = Path(mmproj_hint).expanduser().resolve()
+            if not mm_src.is_file():
+                raise FileNotFoundError(f"Local mmproj file not found: {mm_src}")
+            mmproj_dest = models_dir / mm_src.name
+            if not dry_run and mm_src != mmproj_dest.resolve():
+                shutil.copy2(mm_src, mmproj_dest)
+
+    if dry_run:
+        print(f"[DRY-RUN] Would add custom preset '{preset_name}' ({model_dest}) to {models_ini}")
+        return
+
+    merge_custom_preset_ini(models_ini, profile, residency, models_dir, preset_name, model_dest, mmproj_dest)
+    print(
+        f"Notice: Added uncurated model '{preset_name}' with a generic baseline models.ini entry. "
+        f"Manual tuning (ctx-size, KV cache quantisation, GPU layers) in {models_ini} is up to you."
+    )
+    if preset_name not in _VALID_PRESETS:
+        print("Reminder: Restart active MCP clients (Claude Code, Cursor, Cline, Antigravity) so tools/list refreshes.")
 
 
 def main() -> None:
@@ -163,13 +243,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Manage configured presets and GGUF models.")
     parser.add_argument("action", nargs="?", choices=["list", "add", "remove"], help="Action to run.")
     parser.add_argument("presets", nargs="*", help="Preset names for add/remove.")
+    parser.add_argument("--dir", "--home", dest="workspace_dir", type=str, help="Explicit workspace directory.")
     parser.add_argument("--add", dest="add_flag", nargs="+", metavar="PRESET", help="Add presets.")
     parser.add_argument("--remove", dest="remove_flag", nargs="+", metavar="PRESET", help="Remove presets.")
+    source_group = parser.add_mutually_exclusive_group()
+    source_group.add_argument("--hf", type=str, metavar="REPO[:QUANT]", help="Add from any Hugging Face repo.")
+    source_group.add_argument("--file", type=str, metavar="PATH", help="Add from a local .gguf file.")
+    parser.add_argument("--mmproj", type=str, metavar="PATH_OR_NAME", help="Optional mmproj filename or path.")
     parser.add_argument("-y", "--yes", action="store_true", help="Confirm destructive removals.")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files.")
     args = parser.parse_args()
 
-    cfg = load_config()
+    cfg = load_config(explicit_dir=args.workspace_dir)
     profile = detect_hardware()
     models_ini = Path(cfg.models_ini)
     models_dir = Path(cfg.models_dir)
@@ -179,6 +264,21 @@ def main() -> None:
 
     if args.action == "list":
         _print_models_list(profile, models_ini, models_dir)
+        return
+    if args.hf or args.file:
+        if not add_targets or len(add_targets) != 1:
+            parser.error("--hf and --file require exactly one preset name: llama-mcp-models add <preset> ...")
+        _handle_custom_add(
+            add_targets[0],
+            args.hf,
+            args.file,
+            args.mmproj,
+            profile,
+            cfg.residency,
+            models_ini,
+            models_dir,
+            args.dry_run,
+        )
         return
     if add_targets:
         if args.dry_run:
@@ -196,6 +296,8 @@ def main() -> None:
             return
         deleted = remove_models_from_ini(models_ini, remove_targets, models_dir, delete_files=True)
         print(f"Removed {remove_targets}. Deleted unreferenced files: {deleted}")
+        if any(p not in _VALID_PRESETS for p in remove_targets):
+            print("Reminder: Restart active MCP clients (Claude Code, Cursor, Cline, Antigravity) so tools/list refreshes.")
         return
 
     current = _configured_presets(models_ini)

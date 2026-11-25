@@ -25,6 +25,13 @@ from rich.table import Table
 
 from llama_mcp_bridge.config import get_config_home, load_config
 from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
+from llama_mcp_bridge.paths import (
+    get_default_workspace,
+    read_registered_workspace,
+    register_global_workspace,
+    resolve_workspace,
+    unregister_global_workspace,
+)
 from llama_mcp_bridge.presets import (
     _VALID_PRESETS,
     generate_models_ini,
@@ -527,14 +534,12 @@ def _verify_and_finalize_part(part: Path, target: Path, filename: str, expected_
     part.replace(target)
 
 
-def _download_tier_models(
-    profile: SystemProfile,
+def _download_spec_list(
+    specs: Sequence[dict[str, Any]],
     models_dir: Path,
     dry_run: bool = False,
-    presets: Sequence[str] | None = None,
 ) -> None:
-    """Download curated GGUF models for the detected tier with .part resume support."""
-    specs = get_tier_model_specs(profile.tier, presets=presets)
+    """Download a list of model specs into models_dir with .part resume and SHA-256 verification."""
     models_dir.mkdir(parents=True, exist_ok=True)
 
     for spec in specs:
@@ -543,7 +548,8 @@ def _download_tier_models(
             print(f"Skipping existing model: {target.name}")
             continue
         if dry_run:
-            print(f"[DRY-RUN] Would download {spec['filename']} ({spec['size_gb']} GB) from {spec['url']}")
+            size_label = f"{spec['size_gb']} GB" if spec.get("size_gb") else "unknown size"
+            print(f"[DRY-RUN] Would download {spec['filename']} ({size_label}) from {spec['url']}")
             continue
 
         ok, _, expected_sha256 = probe_model_metadata(spec["url"])
@@ -586,6 +592,17 @@ def _download_tier_models(
                 _verify_and_finalize_part(part, target, spec["filename"], expected_sha256)
             else:
                 raise
+
+
+def _download_tier_models(
+    profile: SystemProfile,
+    models_dir: Path,
+    dry_run: bool = False,
+    presets: Sequence[str] | None = None,
+) -> None:
+    """Download curated GGUF models for the detected tier with .part resume support."""
+    specs = get_tier_model_specs(profile.tier, presets=presets)
+    _download_spec_list(specs, models_dir, dry_run=dry_run)
 
 
 _PRESET_NAMES = (
@@ -719,6 +736,18 @@ def _resolve_bridge_command() -> str:
     return str(scripts_dir / exe_name)
 
 
+def _build_mcp_snippet(workspace: Path) -> str:
+    """Build mcp_config.json snippet, omitting LLAMA_MCP_HOME when globally registered or default."""
+    server_cfg: dict[str, Any] = {"command": _resolve_bridge_command()}
+    resolved_ws = workspace.expanduser().resolve()
+    registered = read_registered_workspace(sys.platform)
+    is_default = resolved_ws == get_default_workspace(sys.platform).expanduser().resolve()
+    is_registered = registered is not None and resolved_ws == registered.expanduser().resolve()
+    if not is_default and not is_registered:
+        server_cfg["env"] = {"LLAMA_MCP_HOME": str(workspace)}
+    return json.dumps({"mcpServers": {"local-ai": server_cfg}}, indent=2)
+
+
 def _configure_client(harness: str) -> None:
     """Print zero-mutation MCP client JSON snippet, target config path, and official guide URL."""
     console = Console()
@@ -730,17 +759,7 @@ def _configure_client(harness: str) -> None:
         )
     cfg = load_config()
     target_path, doc_url = _HARNESS_GUIDES.get(harness, _HARNESS_GUIDES["other"])
-    snippet = json.dumps(
-        {
-            "mcpServers": {
-                "local-ai": {
-                    "command": _resolve_bridge_command(),
-                    "env": {"LLAMA_MCP_HOME": cfg.workspace},
-                }
-            }
-        },
-        indent=2,
-    )
+    snippet = _build_mcp_snippet(Path(cfg.workspace))
     console.print(
         Panel(
             f"[bold]Target config (reference):[/bold] {target_path}\n"
@@ -850,6 +869,7 @@ def _uninstall_bridge(dry_run: bool, yes: bool) -> None:
         if folder.exists():
             shutil.rmtree(folder, ignore_errors=True)
 
+    unregister_global_workspace(only_if_matches=workspace)
     print("Uninstall complete. Your models and .ini files were preserved.")
     print("To remove the CLI package itself: uv tool uninstall llama-mcp-bridge")
 
@@ -920,6 +940,12 @@ def _run_tui_wizard() -> None:
 
     os.environ["LLAMA_MCP_HOME"] = str(workspace)
     workspace.mkdir(parents=True, exist_ok=True)
+    if (
+        workspace.expanduser().resolve() != get_default_workspace(sys.platform).expanduser().resolve()
+        and Confirm.ask("Register this custom workspace globally?", default=True)
+    ):
+        ptr = register_global_workspace(workspace)
+        console.print(f"[green]Registered global workspace pointer:[/green] {ptr}")
     ini_content = generate_models_ini(
         profile,
         models_dir=str(models_dir),
@@ -950,10 +976,7 @@ def _run_tui_wizard() -> None:
     if install_svc:
         _generate_service_file(dry_run=False)
 
-    mcp_snippet = json.dumps(
-        {"mcpServers": {"local-ai": {"command": _resolve_bridge_command(), "env": {"LLAMA_MCP_HOME": str(workspace)}}}},
-        indent=2,
-    )
+    mcp_snippet = _build_mcp_snippet(workspace)
     console.print(Panel(mcp_snippet, title="Add to mcp_config.json", border_style="green"))
     gguf_lines = [ln.strip() for ln in ini_content.splitlines() if ln.strip().startswith("model = ")]
     if gguf_lines:
@@ -1009,6 +1032,9 @@ def main() -> None:
     )
     parser.add_argument("--tui", action="store_true", help="Launch interactive rich TUI wizard.")
     parser.add_argument("--models-dir", type=str, help="Path to models directory.")
+    parser.add_argument("--dir", "--home", dest="workspace_dir", type=str, help="Explicit workspace directory.")
+    parser.add_argument("--register", action="store_true", help="Register workspace globally as active home.")
+    parser.add_argument("--unregister", action="store_true", help="Clear the global workspace registration pointer.")
     parser.add_argument(
         "--presets",
         nargs="+",
@@ -1017,6 +1043,15 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+    if args.workspace_dir:
+        os.environ["LLAMA_MCP_HOME"] = str(resolve_workspace(args.workspace_dir))
+    if args.unregister:
+        if args.dry_run:
+            print("[DRY-RUN] Would clear global workspace pointer.")
+        else:
+            removed = unregister_global_workspace()
+            print("Cleared global workspace pointer." if removed else "No global workspace pointer was set.")
+        return
     if args.uninstall:
         _uninstall_bridge(dry_run=args.dry_run, yes=args.yes)
         return
@@ -1092,6 +1127,9 @@ def main() -> None:
         return
 
     home.mkdir(parents=True, exist_ok=True)
+    if args.register:
+        ptr = register_global_workspace(home)
+        print(f"Registered global workspace pointer at {ptr} -> {home}")
     (home / "models.ini").write_text(ini_content, encoding="utf-8")
     bridge_ini = home / "bridge.ini"
     if not bridge_ini.exists():

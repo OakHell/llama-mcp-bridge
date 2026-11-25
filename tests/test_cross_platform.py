@@ -295,7 +295,7 @@ def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
             "llama_mcp_bridge.installer.Prompt.ask",
             side_effect=[str(custom_ws), str(custom_ws / "models"), "moderate", "skip"],
         ),
-        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False, False]),
+        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False, False, False]),
     ):
         _run_tui_wizard()
 
@@ -1357,3 +1357,87 @@ def test_auto_install_source_system_dynamic_flags_and_copies_shared_libs(monkeyp
     assert cfg_call.kwargs["env"] is None
     assert (tmp_path / "bin" / "llama-server").is_file()
     assert (tmp_path / "bin" / "libllama.so").is_file()
+
+
+def test_workspace_resolution_precedence_and_registration(monkeypatch, tmp_path: Path):
+    import json
+
+    from llama_mcp_bridge.installer import _build_mcp_snippet
+    from llama_mcp_bridge.paths import (
+        register_global_workspace,
+        resolve_workspace,
+        unregister_global_workspace,
+    )
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.delenv("LLAMA_MCP_HOME", raising=False)
+
+    reg_ws = tmp_path / "registered_ws"
+    env_ws = tmp_path / "env_ws"
+    cli_ws = tmp_path / "cli_ws"
+
+    with patch("llama_mcp_bridge.paths.sys.platform", "linux"):
+        ptr = register_global_workspace(reg_ws)
+        assert ptr.is_file()
+        assert resolve_workspace() == reg_ws.resolve()
+
+        monkeypatch.setenv("LLAMA_MCP_HOME", str(env_ws))
+        assert resolve_workspace() == env_ws
+        assert resolve_workspace(explicit_dir=cli_ws) == cli_ws
+
+        monkeypatch.delenv("LLAMA_MCP_HOME", raising=False)
+        with patch("llama_mcp_bridge.installer.sys.platform", "linux"):
+            snippet = json.loads(_build_mcp_snippet(reg_ws))
+        assert "env" not in snippet["mcpServers"]["local-ai"]
+
+        assert unregister_global_workspace(only_if_matches=cli_ws) is False
+        assert unregister_global_workspace(only_if_matches=reg_ws) is True
+        assert not ptr.exists()
+
+
+def test_resolve_hf_gguf_repo_and_custom_add(capsys, monkeypatch, tmp_path: Path):
+    import configparser
+    import json
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.models_cli import _handle_custom_add
+    from llama_mcp_bridge.presets import resolve_hf_gguf_repo
+
+    api_payload = json.dumps(
+        {
+            "siblings": [
+                {"rfilename": "README.md"},
+                {"rfilename": "Qwen3-4B-Q4_K_M.gguf"},
+                {"rfilename": "Qwen3-4B-Q8_0.gguf"},
+                {"rfilename": "mmproj-F16.gguf"},
+            ]
+        }
+    ).encode("utf-8")
+    resp = MagicMock()
+    resp.__enter__.return_value = resp
+    resp.read.return_value = api_payload
+
+    with patch("llama_mcp_bridge.presets.urllib.request.urlopen", return_value=resp):
+        repo_id, m_file, mm_file = resolve_hf_gguf_repo("unsloth/Qwen3-4B-GGUF:Q4_K_M")
+
+    assert repo_id == "unsloth/Qwen3-4B-GGUF"
+    assert m_file == "Qwen3-4B-Q4_K_M.gguf"
+    assert mm_file == "mmproj-F16.gguf"
+
+    local_gguf = tmp_path / "src" / "custom-model.gguf"
+    local_gguf.parent.mkdir()
+    local_gguf.write_bytes(b"GGUF")
+
+    models_ini = tmp_path / "models.ini"
+    models_dir = tmp_path / "models"
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "ubuntu", "6gb")
+    _handle_custom_add("my_custom", None, str(local_gguf), None, profile, "moderate", models_ini, models_dir, dry_run=False)
+
+    out = capsys.readouterr().out
+    assert "generic baseline models.ini entry" in out
+    assert "Restart active MCP clients" in out
+
+    cp = configparser.ConfigParser()
+    cp.read(models_ini, encoding="utf-8")
+    assert cp.has_section("my_custom")
+    assert cp.get("my_custom", "model") == str(models_dir / "custom-model.gguf")

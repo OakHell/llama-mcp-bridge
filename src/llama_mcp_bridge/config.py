@@ -11,6 +11,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from llama_mcp_bridge.paths import resolve_workspace
+
 
 @dataclass
 class BridgeConfig:
@@ -62,23 +64,9 @@ class BridgeConfig:
     gitignore_paths: list[str] = field(default_factory=list)
 
 
-def get_config_home() -> Path:
-    """Determine the canonical configuration home directory.
-
-    Precedence:
-    1. ``LLAMA_MCP_HOME`` environment variable (with ``~`` and env-var expansion).
-    2. Windows: ``%LOCALAPPDATA%\\llama-mcp-bridge`` (fallback ``~/AppData/Local/llama-mcp-bridge``).
-    3. POSIX (Linux, macOS, FreeBSD): ``~/.llama-mcp-bridge``.
-    """
-    env_home = os.environ.get("LLAMA_MCP_HOME")
-    if env_home:
-        return Path(os.path.expandvars(env_home)).expanduser()
-
-    if sys.platform == "win32":
-        local_app_data = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        return Path(os.path.expandvars(local_app_data)).expanduser() / "llama-mcp-bridge"
-
-    return Path.home() / ".llama-mcp-bridge"
+def get_config_home(explicit_dir: Path | str | None = None) -> Path:
+    """Determine the canonical configuration home directory."""
+    return resolve_workspace(explicit_dir=explicit_dir, platform_name=sys.platform)
 
 
 def resolve_path(raw: str, workspace: Path) -> Path:
@@ -107,9 +95,9 @@ def _load_ini_config(config_path: Path) -> dict[str, str]:
     return config_dict
 
 
-def load_config() -> BridgeConfig:
+def load_config(explicit_dir: Path | str | None = None) -> BridgeConfig:
     """Load and merge configuration from bridge.ini and defaults."""
-    config_home = get_config_home()
+    config_home = get_config_home(explicit_dir=explicit_dir)
     bridge_ini_path = config_home / "bridge.ini"
 
     config_dict: dict[str, str] = {}

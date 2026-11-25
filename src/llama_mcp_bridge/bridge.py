@@ -6,12 +6,14 @@
 # ]
 # ///
 
+import argparse
 import base64
 import configparser
 import glob as glob_mod
 import json
 import mimetypes
 import os
+import re
 import threading
 from fnmatch import fnmatch
 from pathlib import Path
@@ -24,6 +26,8 @@ from fastmcp import FastMCP
 from llama_mcp_bridge.config import load_config
 from llama_mcp_bridge.hardware import detect_hardware
 from llama_mcp_bridge.hygiene import clean_mcp_output
+from llama_mcp_bridge.paths import resolve_workspace
+from llama_mcp_bridge.presets import _VALID_PRESETS
 from llama_mcp_bridge.supervisor import LlamaSupervisor, classify_inference_error
 
 mcp = FastMCP("Local Model Specialist")
@@ -834,8 +838,107 @@ def ask_generalist(
     return clean_mcp_output(raw)
 
 
+@mcp.tool()
+def ask_preset(
+    preset: str,
+    prompt: str,
+    file_paths: list[str] | None = None,
+    image_paths: list[str] | None = None,
+    ignore: list[str] | None = None,
+    include: list[str] | None = None,
+    use_gitignore: bool = True,
+    gitignore_paths: list[str] | None = None,
+    json_schema: dict[str, Any] | None = None,
+) -> str:
+    """Invoke any configured or custom [preset] section from models.ini by name."""
+    full_prompt, err = _build_prompt_with_files(
+        prompt,
+        file_paths,
+        ignore=ignore,
+        include=include,
+        use_gitignore=use_gitignore,
+        gitignore_paths=gitignore_paths,
+    )
+    if err:
+        return err
+
+    image_uris: list[str] | None = None
+    if image_paths:
+        image_uris, img_err = _collect_image_uris(image_paths=image_paths)
+        if img_err:
+            return img_err
+
+    raw = query_llama(
+        model=preset,
+        system_prompt="You are a helpful local specialist assistant.",
+        prompt=full_prompt,
+        max_tokens=4096,
+        timeout=180,
+        image_data_uris=image_uris,
+        json_schema=json_schema,
+    )
+    return clean_mcp_output(raw)
+
+
+def _register_custom_preset_tools() -> list[str]:
+    """Dynamically register ask_<preset> MCP tools for custom sections in models.ini."""
+    cfg = load_config()
+    ini_path = Path(cfg.models_ini)
+    if not ini_path.is_file():
+        return []
+    cp = configparser.ConfigParser()
+    try:
+        cp.read(ini_path, encoding="utf-8")
+    except configparser.Error:
+        return []
+
+    registered: list[str] = []
+    for section in cp.sections():
+        if section == "*" or section in _VALID_PRESETS:
+            continue
+        safe_suffix = re.sub(r"[^a-zA-Z0-9_]", "_", section).strip("_")
+        if not safe_suffix:
+            continue
+        tool_name = f"ask_{safe_suffix}"
+
+        def _make_tool(preset_name: str, fn_name: str) -> None:
+            def _dynamic_tool(
+                prompt: str,
+                file_paths: list[str] | None = None,
+                image_paths: list[str] | None = None,
+                ignore: list[str] | None = None,
+                include: list[str] | None = None,
+                use_gitignore: bool = True,
+                gitignore_paths: list[str] | None = None,
+            ) -> str:
+                return ask_preset(
+                    preset=preset_name,
+                    prompt=prompt,
+                    file_paths=file_paths,
+                    image_paths=image_paths,
+                    ignore=ignore,
+                    include=include,
+                    use_gitignore=use_gitignore,
+                    gitignore_paths=gitignore_paths,
+                )
+
+            _dynamic_tool.__name__ = fn_name
+            _dynamic_tool.__doc__ = f"Invoke custom models.ini preset '{preset_name}'."
+            mcp.tool()(_dynamic_tool)
+
+        _make_tool(section, tool_name)
+        registered.append(tool_name)
+    return registered
+
+
 def main() -> None:
     """Entry point for the llama-mcp-bridge MCP server."""
+    parser = argparse.ArgumentParser(description="Run the llama-mcp-bridge MCP server.")
+    parser.add_argument("--dir", "--home", dest="workspace_dir", type=str, help="Explicit workspace directory.")
+    args, _ = parser.parse_known_args()
+    if args.workspace_dir:
+        os.environ["LLAMA_MCP_HOME"] = str(resolve_workspace(args.workspace_dir))
+    _register_custom_preset_tools()
     mcp.run()
 
 
