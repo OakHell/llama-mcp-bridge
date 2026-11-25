@@ -98,8 +98,8 @@ def _load_ini_config(config_path: Path) -> dict[str, str]:
         for section in parser.sections():
             for key, value in parser.items(section):
                 config_dict[key] = value
-    except Exception:
-        pass
+    except (configparser.Error, OSError):
+        return {}
 
     return config_dict
 

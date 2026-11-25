@@ -82,7 +82,7 @@ def _collect_image_uris(
     for path_str in raw_list:
         try:
             uris.append(_encode_image_data_uri(path_str))
-        except Exception as e:
+        except OSError as e:
             return [], f"Error reading image file at {path_str}: {e}"
     return uris, None
 
@@ -92,8 +92,8 @@ def _load_gitignore_spec(gitignore_file: Path) -> pathspec.GitIgnoreSpec | None:
         if gitignore_file.is_file():
             lines = gitignore_file.read_text(encoding="utf-8", errors="replace").splitlines()
             return pathspec.GitIgnoreSpec.from_lines(lines)
-    except Exception:
-        pass
+    except (OSError, ValueError):
+        return None
     return None
 
 
@@ -378,7 +378,7 @@ def _build_prompt_with_files(
         try:
             with p.open("rb") as f:
                 raw_bytes = f.read(remaining + 1)
-        except Exception as e:
+        except OSError as e:
             return "", f"Error reading attached file {p}: {e}"
 
         if b"\x00" in raw_bytes[:4096]:
@@ -468,7 +468,7 @@ def query_llama(
 
     except requests.exceptions.Timeout:
         return f"Error: Local model ({model}) timed out after {timeout} seconds."
-    except Exception as e:
+    except (requests.exceptions.RequestException, ValueError, KeyError) as e:
         return f"Error communicating with llama-server: {e!s}"
 
 

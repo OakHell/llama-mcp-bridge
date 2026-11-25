@@ -9,7 +9,7 @@ without corrupting nested code blocks, LaTeX equations, or raw indentation.
 import json
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 # =====================================================================
 # 1. Input Normalisation & Safety Guards
@@ -44,8 +44,8 @@ class InputSafetyGuard:
                 parsed = json.loads(trimmed)
                 if isinstance(parsed, dict) and ("error" in parsed or "errors" in parsed):
                     return True, raw_output
-            except Exception:
-                pass
+            except (json.JSONDecodeError, ValueError):
+                return False, raw_output
 
         return False, raw_output
 
@@ -164,13 +164,13 @@ class BoundaryDetector:
     )
 
     # 1. Strong markers unambiguously designate macro answer boundaries
-    STRONG_PAYLOAD_MARKERS = [
+    STRONG_PAYLOAD_MARKERS: ClassVar[list[str]] = [
         r"(?:^|\n)\s*(?:[-*_]{3,}\s*\n)?\s*(?:#{1,6}\s*)?(?:\*\*|__)?(?:Final Answer|Final Result|Final Payload)(?:\*\*|__)?\s*[:\-]?\s*",
     ]
     STRONG_MARKER_RE = re.compile("|".join(STRONG_PAYLOAD_MARKERS), re.IGNORECASE)
 
     # 2. Weak markers are frequently found in normal explanations, summaries, and proofs
-    WEAK_PAYLOAD_MARKERS = [
+    WEAK_PAYLOAD_MARKERS: ClassVar[list[str]] = [
         r"(?:^|\n)\s*(?:[-*_]{3,}\s*\n)?\s*(?:#{1,6}\s*)?(?:\*\*|__)?(?:Answer|Result|Solution|Conclusion)(?:\*\*|__)?\s*[:\-]\s*",
         r"(?:^|\n)\s*(?:#{1,6}\s*)(?:Answer|Result|Solution|Conclusion)\b\s*",
     ]

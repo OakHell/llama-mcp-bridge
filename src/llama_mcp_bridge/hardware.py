@@ -58,6 +58,7 @@ def _probe_nvidia() -> tuple[str, float, str] | None:
                 "--query-gpu=name,memory.total,compute_cap",
                 "--format=csv,noheader,nounits",
             ],
+            check=False,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -73,9 +74,8 @@ def _probe_nvidia() -> tuple[str, float, str] | None:
                 raw_cap = parts[2] if len(parts) > 2 else ""
                 compute = f"sm_{raw_cap.replace('.', '')}" if raw_cap and not raw_cap.startswith("sm_") else raw_cap
                 return name, mem_mib / 1024.0, compute
-    except Exception:
-        pass
-    return None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
 
 
 def _probe_amd() -> tuple[str, float] | None:
@@ -83,6 +83,7 @@ def _probe_amd() -> tuple[str, float] | None:
     try:
         result = subprocess.run(
             ["rocm-smi", "--showmeminfo", "vram", "--csv"],
+            check=False,
             capture_output=True,
             text=True,
             timeout=5,
@@ -93,9 +94,8 @@ def _probe_amd() -> tuple[str, float] | None:
                 if len(parts) >= 2:
                     vram_bytes = float(parts[1])
                     return "AMD ROCm", vram_bytes / (1024**3)
-    except Exception:
-        pass
-    return None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
 
 
 def _probe_apple() -> tuple[str, float] | None:
@@ -103,6 +103,7 @@ def _probe_apple() -> tuple[str, float] | None:
     try:
         result = subprocess.run(
             ["sysctl", "-n", "hw.memsize"],
+            check=False,
             capture_output=True,
             text=True,
             timeout=5,
@@ -111,9 +112,8 @@ def _probe_apple() -> tuple[str, float] | None:
             mem_bytes = int(result.stdout.strip())
             vram = mem_bytes * 0.75 / (1024**3)
             return "Apple Silicon", vram
-    except Exception:
-        pass
-    return None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
 
 
 def _probe_intel_or_vulkan() -> tuple[str, float] | None:
@@ -121,15 +121,15 @@ def _probe_intel_or_vulkan() -> tuple[str, float] | None:
     try:
         result = subprocess.run(
             ["lspci", "-k", "-n", "-d", "8086:"],
+            check=False,
             capture_output=True,
             text=True,
             timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
             return "Intel", 0.0
-    except Exception:
-        pass
-    return None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
 
 
 def _probe_windows_wmi() -> tuple[str, str, float] | None:
@@ -142,6 +142,7 @@ def _probe_windows_wmi() -> tuple[str, str, float] | None:
                 "-Command",
                 "Get-CimInstance Win32_VideoController | Select-Object -First 1 Name,AdapterRAM | ConvertTo-Csv -NoTypeInformation",
             ],
+            check=False,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -156,9 +157,8 @@ def _probe_windows_wmi() -> tuple[str, str, float] | None:
                 ram_bytes = float(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0.0
                 vendor = "amd" if "amd" in name.lower() or "radeon" in name.lower() else "intel"
                 return vendor, name, ram_bytes / (1024**3)
-    except Exception:
-        pass
-    return None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
 
 
 def detect_hardware() -> SystemProfile:

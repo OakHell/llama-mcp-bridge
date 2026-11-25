@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from typing import Self
 
 import requests
 from requests.exceptions import ConnectionError, Timeout
@@ -126,7 +127,7 @@ class LlamaSupervisor:
             self._health_status.is_healthy = False
             self._health_status.error_message = error_msg
             return False
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, AttributeError) as e:
             error_msg = f"Failed to start server: {e!s}"
             self._health_status.is_healthy = False
             self._health_status.error_message = error_msg
@@ -202,10 +203,7 @@ class LlamaSupervisor:
             if not self._ensure_process_exists():
                 return False
 
-            if not self._poll_until_healthy():
-                return False
-
-            return True
+            return self._poll_until_healthy()
 
     def is_healthy(self) -> bool:
         """
@@ -271,7 +269,7 @@ class LlamaSupervisor:
                 self._health_status.is_healthy = False
                 self._health_status.error_message = "Server stopped"
                 return True
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError, AttributeError) as e:
                 self._health_status.error_message = f"Failed to stop server: {e!s}"
                 return False
 
@@ -324,7 +322,7 @@ class LlamaSupervisor:
             atexit.register(self._cleanup)
             self._atexit_registered = True
 
-    def __enter__(self) -> "LlamaSupervisor":
+    def __enter__(self) -> Self:
         """Context manager entry."""
         self.register_atexit()
         return self
