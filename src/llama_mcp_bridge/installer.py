@@ -164,7 +164,7 @@ def _auto_install_llama_server(
 ) -> None:
     """Prompt and install llama-server into <workspace>/bin when undetected."""
     bin_dir = workspace / "bin"
-    exe_name = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+    exe_name = "llama-server.exe" if profile.os_name == "windows" else "llama-server"
 
     if mode == "system-bin":
         pkg_hints = {
