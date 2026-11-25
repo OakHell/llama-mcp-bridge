@@ -995,7 +995,7 @@ def test_linux_systemd_service_auto_activates(monkeypatch, tmp_path: Path):
     orig_exists = Path.exists
 
     def fake_exists(self: Path) -> bool:
-        if str(self) == "/run/systemd/system":
+        if self.as_posix() == "/run/systemd/system":
             return True
         return orig_exists(self)
 
@@ -1057,7 +1057,7 @@ def test_uninstall_silences_systemctl_stderr(monkeypatch, tmp_path: Path):
     orig_exists = Path.exists
 
     def fake_exists(self: Path) -> bool:
-        if str(self) == "/run/systemd/system":
+        if self.as_posix() == "/run/systemd/system":
             return True
         return orig_exists(self)
 
