@@ -8,6 +8,7 @@
 
 import base64
 import glob as glob_mod
+import json
 import mimetypes
 import os
 import threading
@@ -590,6 +591,13 @@ def ask_coder(
 
 
 @mcp.tool()
+def get_bridge_status() -> str:
+    """Return server health, hardware tier, and loaded/unloaded model status as JSON."""
+    supervisor = LlamaSupervisor(load_config())
+    return json.dumps(supervisor.get_status(), indent=2)
+
+
+@mcp.tool()
 def ask_coder_long(
     prompt: str,
     file_paths: list[str] | None = None,
@@ -617,7 +625,23 @@ def ask_coder_long(
         max_tokens=6144,
         timeout=300,
     )
-    return clean_mcp_output(raw)
+    cleaned = clean_mcp_output(raw)
+    if file_paths:
+        files, _ = _expand_target_files(
+            file_paths,
+            ignore=ignore,
+            include=include,
+            use_gitignore=use_gitignore,
+            gitignore_paths=gitignore_paths,
+        )
+        total_files = len(files)
+        included_count = full_prompt.count("<file path=")
+        omitted = [str(f) for f in files[included_count:]] if included_count < total_files else []
+        footer = f"\n\n[Context Budget: {included_count}/{total_files} files included, {len(full_prompt)} chars]"
+        if omitted:
+            footer += f" Omitted: {', '.join(omitted[:5])}"
+        return cleaned + footer
+    return cleaned
 
 
 def _encode_image_to_data_uri(image_path: str) -> str:

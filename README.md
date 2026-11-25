@@ -1,6 +1,6 @@
 # Llama MCP Bridge
 
-A cross-platform Model Context Protocol (MCP) bridge connecting MCP clients to a local `llama-server` instance. It automatically profiles your GPU VRAM (or CPU fallback) and generates tuned `models.ini` presets—selecting optimal GGUF quantisations, KV-cache precision, and context windows for your exact memory constraints.
+A cross-platform (Linux, macOS, Windows, FreeBSD) Model Context Protocol (MCP) bridge connecting MCP clients to a local `llama-server` instance. It automatically profiles your GPU VRAM (or CPU fallback) and generates tuned `models.ini` presets—selecting optimal GGUF quantisations, KV-cache precision, and context windows for your exact memory constraints.
 
 ## Architecture & Features
 
@@ -113,7 +113,7 @@ Relative paths in `bridge.ini` (`models_dir`, `models_ini`, `llama_server_bin`) 
 | `ask_digest` | High-speed structured JSON/fact extraction |
 | `ask_coder_fast` | Rapid boilerplate and targeted edits |
 | `ask_coder` | Standard code generation and refactoring |
-| `ask_coder_long` | Multi-file codebase analysis (32K context) |
+| `ask_coder_long` | Multi-file codebase analysis (tier-scaled context, 16K–128K) |
 | `ask_vision` | Fast UI inspection, screenshots, and OCR |
 | `ask_vision_deep` | Complex visual reasoning and diagrams |
 | `ask_reasoner` | Mathematical, algorithmic, and logical reasoning |

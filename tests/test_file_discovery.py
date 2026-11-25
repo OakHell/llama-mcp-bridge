@@ -74,3 +74,21 @@ def test_binary_file_skipping(tmp_path: Path):
     assert err is None
     assert "code.py" in prompt
     assert "skipped_binary" in prompt
+
+
+def test_ask_coder_long_context_budget_footer(tmp_path: Path):
+    from unittest.mock import MagicMock, patch
+
+    from llama_mcp_bridge.bridge import ask_coder_long
+
+    f1 = tmp_path / "a.py"
+    f1.write_text("print('a')\n")
+    mock_resp = MagicMock(status_code=200)
+    mock_resp.json.return_value = {"choices": [{"message": {"content": "Analysis done."}}]}
+
+    with (
+        patch("llama_mcp_bridge.bridge.LlamaSupervisor.ensure_running"),
+        patch("llama_mcp_bridge.bridge.requests.post", return_value=mock_resp),
+    ):
+        out = ask_coder_long("Analyse", file_paths=[str(f1)])
+    assert "[Context Budget: 1/1 files included," in out

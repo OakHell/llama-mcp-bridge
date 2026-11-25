@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Self
+from typing import Any, Self
 
 import requests
 from requests.exceptions import ConnectionError, Timeout
@@ -204,6 +204,34 @@ class LlamaSupervisor:
                 return False
 
             return self._poll_until_healthy()
+
+    def get_status(self) -> dict[str, Any]:
+        """Return server health, hardware tier, and loaded/unloaded model status."""
+        from llama_mcp_bridge.hardware import detect_hardware
+
+        profile = detect_hardware()
+        healthy = self._check_health()
+        models: dict[str, str] = {}
+        if healthy:
+            try:
+                resp = requests.get(f"{self._get_server_url()}/models", timeout=2)
+                if resp.status_code == 200:
+                    data = resp.json().get("data", [])
+                    for item in data:
+                        mid = item.get("id", "")
+                        if mid:
+                            status_obj = item.get("status", {})
+                            models[mid] = status_obj.get("value", "loaded") if isinstance(status_obj, dict) else "loaded"
+            except (requests.exceptions.RequestException, ValueError, KeyError):
+                pass
+        return {
+            "healthy": healthy,
+            "server_url": self._get_server_url(),
+            "tier": profile.tier,
+            "vram_gb": profile.vram_gb,
+            "gpu_vendor": profile.gpu_vendor,
+            "models": models,
+        }
 
     def is_healthy(self) -> bool:
         """
