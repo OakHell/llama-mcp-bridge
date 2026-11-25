@@ -31,3 +31,6 @@ Delegate heavy inspection, boilerplate, auditing, and verification to the `local
 
 ## 6. Single-Responsibility Tool Calls
 - **One Module Per `local-ai` Call:** Never ask `ask_coder` or `ask_coder_long` to combine hardware probing, INI/config generation, and CLI logic in a single prompt. Split distinct concerns into separate files (`hardware.py` for probes vs. `presets.py` for `models.ini` generation) and generate one file per tool call.
+
+## 7. Test Integrity & Anti-Cheating Rule
+- **Never Weaken Tests to Force a Pass:** When a test fails, fix the production code in `src/`—never delete assertions, loosen expected values, or strip edge cases from `tests/` just to make `pytest` exit `0`.

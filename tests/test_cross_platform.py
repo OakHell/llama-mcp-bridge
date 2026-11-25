@@ -149,3 +149,23 @@ def test_load_config_custom_workspace_and_relative_paths(monkeypatch, tmp_path: 
     assert cfg.models_dir == str(ws / "custom_models")
     assert cfg.models_ini == str(ws / "models.ini")
     assert cfg.llama_server_bin == str(ws / "bin" / "llama-server.exe")
+
+
+def test_bridge_example_ini_parity(monkeypatch, tmp_path: Path):
+    import shutil
+    from llama_mcp_bridge.config import load_config
+
+    example_ini = Path(__file__).resolve().parents[1] / "bridge.example.ini"
+    assert example_ini.exists()
+
+    cfg_home = tmp_path / "cfg"
+    cfg_home.mkdir()
+    shutil.copy(example_ini, cfg_home / "bridge.ini")
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(cfg_home))
+
+    cfg = load_config()
+    assert cfg.host == "127.0.0.1"
+    assert cfg.port == 8080
+    assert cfg.auto_spawn is True
+    assert cfg.health_timeout_s == 60
+    assert cfg.request_timeout_s == 180
