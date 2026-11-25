@@ -53,7 +53,10 @@ uv run pytest -v
 | `--mode source-system` | Builds `llama.cpp` from source using system toolchains. |
 | `--mode system-bin` | Uses an existing `llama-server` binary on `PATH`. |
 | `--dry-run` | Prints planned actions without writing files or executing subprocesses. |
+| `-y`, `--yes` | Auto-confirms `llama-server` installation when undetected. |
 | `--install-service` | Generates an OS-specific user service (`systemd` on Linux, `launchd` on macOS). |
+
+> **Hardware Prerequisites:** `llama-mcp-install` audits your GPU/OS tools (`nvidia-smi`, `nvcc`, `rocminfo`, `vulkaninfo`, `xcode-select`, `cmake`) and warns if any BYO drivers or SDKs are missing before offering to install `llama-server`.
 
 ## Configuration (`LLAMA_MCP_HOME` & `bridge.ini`)
 

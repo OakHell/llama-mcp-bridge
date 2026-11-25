@@ -212,3 +212,62 @@ def test_non_systemd_linux_and_bsd_crontab_dedup(monkeypatch, tmp_path: Path):
         written_cron = mock_run.call_args_list[1].kwargs["input"]
         assert written_cron.count("# llama-mcp-bridge") == 1
         assert "/usr/bin/backup" in written_cron
+
+
+def test_hardware_prerequisite_warning_when_missing(capsys):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _check_hardware_prerequisites
+
+    profile = SystemProfile("linux", "x86_64", "nvidia", "RTX 3070", 8.0, "sm_86", "ubuntu", "8gb")
+    with patch("llama_mcp_bridge.installer.shutil.which", return_value=None):
+        missing = _check_hardware_prerequisites(profile, "prebuilt")
+    out = capsys.readouterr().out
+    assert "nvidia-smi" in out
+    assert len(missing) >= 1
+
+
+def test_auto_install_declined_skips_download(tmp_path: Path):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _auto_install_llama_server
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
+    with (
+        patch("llama_mcp_bridge.installer.sys.stdin.isatty", return_value=True),
+        patch("builtins.input", return_value="n"),
+        patch("llama_mcp_bridge.installer.urllib.request.urlopen") as mock_url,
+    ):
+        _auto_install_llama_server(profile, "prebuilt", tmp_path, dry_run=False, yes=False)
+    mock_url.assert_not_called()
+    assert not (tmp_path / "bridge.ini").exists()
+
+
+def test_auto_install_prebuilt_yes_extracts_and_updates_ini(tmp_path: Path):
+    import io
+    import json
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _auto_install_llama_server
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("llama-server", "binary")
+    zip_bytes = buf.getvalue()
+
+    release_json = json.dumps(
+        {"assets": [{"name": "llama-ubuntu.zip", "browser_download_url": "https://example.com/llama.zip"}]}
+    ).encode("utf-8")
+
+    resp1 = MagicMock()
+    resp1.__enter__.return_value = resp1
+    resp1.read.return_value = release_json
+
+    resp2 = MagicMock()
+    resp2.__enter__.return_value = resp2
+    resp2.read.return_value = zip_bytes
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
+    with patch("llama_mcp_bridge.installer.urllib.request.urlopen", side_effect=[resp1, resp2]):
+        _auto_install_llama_server(profile, "prebuilt", tmp_path, dry_run=False, yes=True)
+
+    assert (tmp_path / "bin" / "llama-server").exists()
+    assert "llama_server_bin = bin/llama-server" in (tmp_path / "bridge.ini").read_text(encoding="utf-8")

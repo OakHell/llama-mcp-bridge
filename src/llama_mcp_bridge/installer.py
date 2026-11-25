@@ -1,15 +1,20 @@
 """Cross-platform installer CLI for llama-mcp-bridge."""
 
 import argparse
+import configparser
+import json
+import os
 import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
+import urllib.request
 import zipfile
 from pathlib import Path
 
 from llama_mcp_bridge.config import get_config_home, load_config
-from llama_mcp_bridge.hardware import detect_hardware
+from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
 from llama_mcp_bridge.presets import generate_models_ini
 
 
@@ -30,6 +35,144 @@ def _extract_archive(archive_path: Path, dest_dir: Path) -> None:
             tf.extractall(dest_dir)
     else:
         raise ValueError(f"Unsupported archive format: {archive_path}")
+
+
+def _check_hardware_prerequisites(profile: SystemProfile, mode: str) -> list[str]:
+    """Check required runtime/build tools and print a guided prerequisite summary."""
+    missing: list[str] = []
+    print("\n--- Hardware Prerequisite Check (Drivers/SDKs are BYO) ---")
+    if profile.gpu_vendor == "nvidia":
+        if not shutil.which("nvidia-smi"):
+            missing.append("nvidia-smi (install NVIDIA GPU drivers)")
+        if mode in ("source-hermetic", "source-system") and not shutil.which("nvcc"):
+            missing.append("nvcc (install CUDA Toolkit)")
+    elif profile.gpu_vendor == "amd":
+        if not shutil.which("rocminfo") and not shutil.which("vulkaninfo"):
+            missing.append("rocminfo or vulkaninfo (install ROCm or Vulkan drivers)")
+        if mode in ("source-hermetic", "source-system") and not shutil.which("hipcc"):
+            missing.append("hipcc (install ROCm HIP SDK)")
+    elif profile.gpu_vendor == "intel":
+        if not shutil.which("vulkaninfo"):
+            missing.append("vulkaninfo (install Intel Vulkan drivers/tools)")
+    elif (
+        profile.gpu_vendor == "apple"
+        and mode in ("source-hermetic", "source-system")
+        and not shutil.which("xcode-select")
+    ):
+        missing.append("xcode-select (run: xcode-select --install)")
+
+    if mode in ("source-hermetic", "source-system") and not shutil.which("cmake"):
+        missing.append("cmake (install CMake 3.21+)")
+
+    if missing:
+        print("WARNING: Missing prerequisites detected:")
+        for item in missing:
+            print(f"  - {item}")
+    else:
+        print("All detected hardware prerequisites are present.")
+    return missing
+
+
+def _find_llama_server(workspace: Path, configured_bin: str) -> Path | None:
+    """Return path to llama-server if already installed, else None."""
+    exe_name = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+    if configured_bin and Path(configured_bin).is_file():
+        return Path(configured_bin)
+    local_bin = workspace / "bin" / exe_name
+    if local_bin.is_file():
+        return local_bin
+    which_bin = shutil.which(exe_name)
+    return Path(which_bin) if which_bin else None
+
+
+def _persist_server_bin(workspace: Path, rel_bin: str) -> None:
+    """Persist llama_server_bin in <workspace>/bridge.ini."""
+    ini_path = workspace / "bridge.ini"
+    parser = configparser.ConfigParser()
+    if ini_path.exists():
+        parser.read(ini_path, encoding="utf-8")
+    if "bridge" not in parser:
+        parser["bridge"] = {}
+    parser["bridge"]["llama_server_bin"] = rel_bin
+    with ini_path.open("w", encoding="utf-8") as fh:
+        parser.write(fh)
+
+
+def _auto_install_llama_server(
+    profile: SystemProfile, mode: str, workspace: Path, dry_run: bool, yes: bool
+) -> None:
+    """Prompt and install llama-server into <workspace>/bin when undetected."""
+    bin_dir = workspace / "bin"
+    exe_name = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+
+    if mode == "system-bin":
+        pkg_hints = {
+            "darwin": "brew install llama.cpp",
+            "win32": "winget install ggml.llamacpp",
+            "linux": "sudo pacman -S llama.cpp  # or your distro package manager",
+        }
+        hint = pkg_hints.get(sys.platform, "pkg install llama.cpp")
+        print(f"Install llama-server via your system package manager:\n  {hint}")
+        return
+
+    if dry_run:
+        print(f"[DRY-RUN] Would prompt to install llama-server ({mode}) into {bin_dir}")
+        return
+
+    if not yes:
+        if not sys.stdin.isatty():
+            print("Non-interactive session without --yes; skipping llama-server install.")
+            return
+        ans = input(f"Install llama-server automatically into {bin_dir}? [y/N]: ").strip().lower()
+        if ans not in ("y", "yes"):
+            print("Skipped llama-server installation.")
+            return
+
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    if mode == "prebuilt":
+        api_url = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
+        with urllib.request.urlopen(api_url, timeout=15) as resp:
+            release = json.loads(resp.read().decode("utf-8"))
+        suffix = (
+            _macos_release_asset(profile.arch)
+            if profile.os_name == "darwin"
+            else ("win" if profile.os_name == "windows" else "ubuntu")
+        )
+        assets = release.get("assets", [])
+        match = next((a for a in assets if suffix in a.get("name", "").lower()), None)
+        if not match:
+            raise RuntimeError(f"No prebuilt llama.cpp release asset found for {suffix}")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive_path = Path(tmpdir) / match["name"]
+            with urllib.request.urlopen(match["browser_download_url"], timeout=60) as dl:
+                archive_path.write_bytes(dl.read())
+            _extract_archive(archive_path, bin_dir)
+    else:
+        backend_flags = {
+            "nvidia": "-DGGML_CUDA=ON",
+            "amd": "-DGGML_HIP=ON",
+            "intel": "-DGGML_VULKAN=ON",
+            "apple": "-DGGML_METAL=ON",
+        }
+        flag = backend_flags.get(profile.gpu_vendor, "-DGGML_NATIVE=ON")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_dir = Path(tmpdir) / "llama.cpp"
+            build_dir = src_dir / "build"
+            subprocess.run(
+                ["git", "clone", "--depth", "1", "https://github.com/ggml-org/llama.cpp.git", str(src_dir)],
+                check=True,
+            )
+            subprocess.run(["cmake", "-B", str(build_dir), str(src_dir), flag], check=True)
+            subprocess.run(["cmake", "--build", str(build_dir), "--config", "Release", "--target", "llama-server"], check=True)
+            built_bin = next(build_dir.rglob(exe_name), None)
+            if built_bin:
+                shutil.copy2(built_bin, bin_dir / exe_name)
+
+    target_bin = bin_dir / exe_name
+    if target_bin.exists() and sys.platform != "win32":
+        os.chmod(target_bin, 0o755)
+    _persist_server_bin(workspace, f"bin/{exe_name}")
+    print(f"Installed llama-server to {target_bin}")
 
 
 def _install_reboot_crontab(server_bin: str, models_ini: str, host: str, port: int, dry_run: bool) -> None:
@@ -165,10 +308,12 @@ def main() -> None:
     )
     parser.add_argument("--dry-run", action="store_true", help="Print planned actions without executing.")
     parser.add_argument("--install-service", action="store_true", help="Generate service unit file.")
+    parser.add_argument("-y", "--yes", action="store_true", help="Auto-confirm llama-server installation.")
     parser.add_argument("--models-dir", type=str, help="Path to models directory.")
 
     args = parser.parse_args()
     home = get_config_home()
+    cfg = load_config()
     models_dir = Path(args.models_dir) if args.models_dir else home / "models"
 
     profile = detect_hardware()
@@ -177,6 +322,11 @@ def main() -> None:
     print(f"Mode: {args.mode}")
     print(f"Hardware: {profile.os_name}/{profile.arch} {profile.gpu_vendor} ({profile.vram_gb} GB, tier={profile.tier})")
     print(f"Models Dir: {models_dir}")
+
+    _check_hardware_prerequisites(profile, args.mode)
+
+    if not _find_llama_server(home, cfg.llama_server_bin):
+        _auto_install_llama_server(profile, args.mode, home, args.dry_run, args.yes)
 
     if args.install_service:
         _generate_service_file(args.dry_run)
