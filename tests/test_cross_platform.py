@@ -70,6 +70,7 @@ def test_supervisor_windows_popen_and_stop():
     with (
         patch("llama_mcp_bridge.supervisor.os.name", "nt"),
         patch("llama_mcp_bridge.supervisor.sys.platform", "win32"),
+        patch("shutil.which", return_value="C:\\bin\\llama-server.exe"),
         patch("llama_mcp_bridge.supervisor.subprocess.Popen", return_value=mock_proc) as mock_popen,
         patch.object(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, create=True),
         patch.object(subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True),
@@ -96,6 +97,7 @@ def test_supervisor_posix_popen():
     with (
         patch("llama_mcp_bridge.supervisor.os.name", "posix"),
         patch("llama_mcp_bridge.supervisor.sys.platform", "linux"),
+        patch("shutil.which", return_value="/usr/bin/llama-server"),
         patch("llama_mcp_bridge.supervisor.subprocess.Popen", return_value=mock_proc) as mock_popen,
     ):
         sup._start_server()

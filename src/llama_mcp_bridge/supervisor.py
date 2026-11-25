@@ -94,18 +94,17 @@ class LlamaSupervisor:
             True if server started successfully, False otherwise.
         """
         try:
-            cmd = [self.config.binary]
-            cmd.extend(self.config.extra_args)
-
-            # Resolve binary extension for Windows
-            if sys.platform == "win32" and not self.config.binary.endswith(".exe"):
-                self.config.binary += ".exe"
+            binary_bin = getattr(self.config, "llama_server_bin", "") or getattr(self.config, "binary", "") or "llama-server"
+            if (sys.platform == "win32" or os.name == "nt") and not binary_bin.lower().endswith(".exe"):
+                binary_bin = f"{binary_bin}.exe"
+            cmd = [binary_bin]
+            cmd.extend(getattr(self.config, "extra_args", []))
 
             # Prepare Popen kwargs
             kwargs = {
                 "stdout": subprocess.PIPE,
                 "stderr": subprocess.PIPE,
-                "env": {**os.environ, **self.config.env_vars},
+                "env": {**os.environ, **getattr(self.config, "env_vars", {})},
             }
 
             if sys.platform == "win32":
@@ -126,7 +125,7 @@ class LlamaSupervisor:
             self._running = True
             return True
         except FileNotFoundError:
-            error_msg = f"Server binary not found: {self.config.binary}"
+            error_msg = f"Server binary not found: {(getattr(self.config, "llama_server_bin", "") or getattr(self.config, "binary", "") or "llama-server")}"
             self._health_status.is_healthy = False
             self._health_status.error_message = error_msg
             return False
