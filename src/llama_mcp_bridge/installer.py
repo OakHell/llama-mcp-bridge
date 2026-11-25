@@ -735,20 +735,20 @@ def _run_tui_wizard() -> None:
     selected_presets = select_presets_interactive(
         profile,
         initial_selected=default_presets,
-        title="Step 3b: Select Specialist Presets",
+        title="Step 4: Select Specialist Presets",
     )
 
     mode = "skip"
     if not found_bin:
         mode = Prompt.ask(
-            "\nStep 4: llama-server install mode",
+            "\nStep 5: llama-server install mode",
             choices=["prebuilt", "system-bin", "source-hermetic", "source-system", "skip"],
             default="prebuilt",
         )
 
-    install_svc = Confirm.ask("\nStep 5: Register background service?", default=False)
+    install_svc = Confirm.ask("\nStep 6: Register background service?", default=False)
 
-    summary = Table(title="Step 6: Planned Configuration")
+    summary = Table(title="Step 7: Planned Configuration")
     summary.add_column("Setting", style="bold")
     summary.add_column("Value")
     summary.add_row("Workspace", str(workspace))
@@ -774,16 +774,11 @@ def _run_tui_wizard() -> None:
 
     specs = get_tier_model_specs(profile.tier, presets=selected_presets or None)
     total_gb = sum(s["size_gb"] for s in specs)
-    if Confirm.ask(
-        f"Download selected starter GGUF models for your {profile.tier} tier now (~{total_gb:.1f} GB)?",
+    if selected_presets and Confirm.ask(
+        f"Download GGUF models for your selected presets now (~{total_gb:.1f} GB)?",
         default=False,
     ):
-        _download_tier_models(profile, models_dir, dry_run=False, presets=selected_presets or None)
-    elif Confirm.ask(
-        "Download only the lightweight 'digest' model (~0.8 GB) instead?",
-        default=False,
-    ):
-        _download_tier_models(profile, models_dir, dry_run=False, presets=["digest"])
+        _download_tier_models(profile, models_dir, dry_run=False, presets=selected_presets)
 
     bridge_ini = workspace / "bridge.ini"
     if not bridge_ini.exists():

@@ -291,7 +291,7 @@ def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
             "llama_mcp_bridge.installer.Prompt.ask",
             side_effect=[str(custom_ws), str(custom_ws / "models"), "moderate", "skip"],
         ),
-        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False, False, False]),
+        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False, False]),
     ):
         _run_tui_wizard()
 
@@ -961,3 +961,22 @@ def test_run_doctor_passes_with_only_selected_presets_on_disk(tmp_path: Path, mo
     out = capsys.readouterr().out
     assert "FAIL" not in out
     assert "All referenced files present in" in out
+
+
+def test_select_presets_interactive_inline_live_cursor_and_size(capsys):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.models_cli import select_presets_interactive
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "ubuntu", "6gb")
+    with (
+        patch("llama_mcp_bridge.models_cli.sys.stdin.isatty", return_value=True),
+        patch("llama_mcp_bridge.models_cli._read_key", side_effect=["DOWN", " ", "\r"]),
+    ):
+        chosen = select_presets_interactive(profile, initial_selected=["digest"])
+
+    assert chosen == ["digest", "coder-fast"]
+    out = capsys.readouterr().out
+    assert "Size" in out
+    assert "> [x]" in out
+    assert "  [x]" in out
+    assert "  [ ]" in out

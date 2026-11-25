@@ -6,9 +6,11 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
+from rich.text import Text
 
 from llama_mcp_bridge.config import load_config
 from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
@@ -84,34 +86,43 @@ def select_presets_interactive(
                 chosen.append(t)
         return chosen
 
-    cursor = 0
-    while True:
-        console.clear()
+    preset_sizes = {
+        name: sum(s["size_gb"] for s in get_tier_model_specs(profile.tier, presets=[name]))
+        for name in _VALID_PRESETS
+    }
+
+    def _render_selector(cur: int) -> Group:
         table = Table(title=f"{title} (tier={profile.tier})")
         table.add_column("Select", style="bold")
         table.add_column("Preset", style="cyan")
+        table.add_column("Size", justify="right", style="magenta")
         table.add_column("Description")
         for idx, name in enumerate(_VALID_PRESETS):
-            pointer = ">" if idx == cursor else " "
+            pointer = ">" if idx == cur else " "
             box = "[x]" if name in selected else "[ ]"
-            table.add_row(f"{pointer} {box}", name, _PRESET_DESCRIPTIONS.get(name, ""))
-        console.print(table)
-        console.print("[dim]Up/Down or j/k: move | Space: toggle | a: all/none | Enter: apply[/dim]")
-        key = _read_key()
-        if key in ("UP", "k"):
-            cursor = (cursor - 1) % len(_VALID_PRESETS)
-        elif key in ("DOWN", "j"):
-            cursor = (cursor + 1) % len(_VALID_PRESETS)
-        elif key == " ":
-            name = _VALID_PRESETS[cursor]
-            if name in selected:
-                selected.remove(name)
-            else:
-                selected.add(name)
-        elif key.lower() == "a":
-            selected = set() if len(selected) == len(_VALID_PRESETS) else set(_VALID_PRESETS)
-        elif key in ("\r", "\n"):
-            return [p for p in _VALID_PRESETS if p in selected]
+            sel_text = Text(f"{pointer} {box}", style="bold green" if idx == cur else "bold")
+            table.add_row(sel_text, name, f"{preset_sizes[name]:.1f} GB", _PRESET_DESCRIPTIONS.get(name, ""))
+        return Group(table, "[dim]Up/Down or j/k: move | Space: toggle | a: all/none | Enter: apply[/dim]")
+
+    cursor = 0
+    with Live(_render_selector(cursor), console=console, screen=False, auto_refresh=False) as live:
+        while True:
+            key = _read_key()
+            if key in ("UP", "k"):
+                cursor = (cursor - 1) % len(_VALID_PRESETS)
+            elif key in ("DOWN", "j"):
+                cursor = (cursor + 1) % len(_VALID_PRESETS)
+            elif key == " ":
+                name = _VALID_PRESETS[cursor]
+                if name in selected:
+                    selected.remove(name)
+                else:
+                    selected.add(name)
+            elif key.lower() == "a":
+                selected = set() if len(selected) == len(_VALID_PRESETS) else set(_VALID_PRESETS)
+            elif key in ("\r", "\n"):
+                return [p for p in _VALID_PRESETS if p in selected]
+            live.update(_render_selector(cursor), refresh=True)
 
 
 def _configured_presets(models_ini: Path) -> set[str]:
