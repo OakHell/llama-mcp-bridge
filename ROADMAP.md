@@ -49,9 +49,9 @@
 - **Windows CUDA Runtime Co-Location (`installer.py`)**: Rejects `cudart-llama-*.zip` runtime-only archives in `_select_llama_release_asset()` and automatically fetches + extracts companion `cudart` DLLs alongside `llama-server.exe` on Windows NVIDIA setups.
 - **macOS Runtime Libraries & Ad-Hoc Signing (`installer.py`)**: Preserves companion `.dylib` and `.metallib` files alongside `llama-server` when flattening extracted archives and runs `codesign --force --deep -s -` on extracted Mach-O binaries on Apple Silicon.
 
-### `v0.5.1` — Phase 2: Native Background Service Lifecycles (Windows & macOS)
-- **Windows (`_generate_service_file()`)**: Add `/F` to `schtasks /Create`, wrap `/TR` paths containing spaces in escaped quotes, and launch `start-llama-server.bat` without a visible console window.
-- **macOS (`_generate_service_file()`)**: Migrate from legacy `launchctl load/unload` to `launchctl bootstrap gui/<uid>` / `bootout`, and include `<key>WorkingDirectory</key>` plus `<key>EnvironmentVariables</key>` (`LLAMA_MCP_HOME`) in the `.plist`.
+### `v0.5.1` — Phase 2: Native Background Service Lifecycles (Windows & macOS) (Shipped)
+- **Windows (`_generate_service_file()`)**: Passes `/F` to `schtasks /Create`, wraps `/TR` batch paths containing spaces in quotes, and launches `start-llama-server.bat` windowlessly via `conhost.exe --headless`.
+- **macOS (`_generate_service_file()` & `_uninstall_bridge()`)**: Migrated from legacy `launchctl load/unload` to `launchctl bootstrap gui/<uid>` / `bootout`, and includes `<key>WorkingDirectory</key>` plus `<key>EnvironmentVariables</key>` (`LLAMA_MCP_HOME`) in the `.plist`.
 
 ### `v0.5.2` — Phase 3: Windows Interactive TUI & MCP Client Path Resolution
 - **Windows TUI Key Handling (`models_cli.py`)**: Handle Windows `msvcrt.getch()` two-byte arrow prefixes (`\xe0` / `\x00` + `H`/`P`) in `select_presets_interactive()`.

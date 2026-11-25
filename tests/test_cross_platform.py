@@ -1187,3 +1187,55 @@ def test_auto_install_macos_preserves_dylib_metallib_and_codesigns(tmp_path: Pat
     assert (tmp_path / "bin" / "ggml-metal.metallib").is_file()
     codesign_calls = [c.args[0] for c in mock_run.call_args_list if c.args[0][0] == "codesign"]
     assert any(c[:5] == ["codesign", "--force", "--deep", "-s", "-"] for c in codesign_calls)
+
+
+def test_windows_schtasks_force_quoted_spaces_and_headless(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import _generate_service_file
+
+    spaced_ws = tmp_path / "First Last" / "llama-mcp-bridge"
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(spaced_ws))
+    with (
+        patch("llama_mcp_bridge.installer.sys.platform", "win32"),
+        patch("llama_mcp_bridge.config.sys.platform", "win32"),
+        patch("llama_mcp_bridge.installer.subprocess.run") as mock_run,
+    ):
+        _generate_service_file(dry_run=False)
+
+    create_cmd = mock_run.call_args_list[0].args[0]
+    assert "/F" in create_cmd
+    tr_val = create_cmd[create_cmd.index("/TR") + 1]
+    assert "conhost.exe --headless" in tr_val
+    assert f'"{spaced_ws / "start-llama-server.bat"}"' in tr_val
+
+
+def test_macos_launchd_plist_env_and_bootstrap_bootout(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import _generate_service_file, _uninstall_bridge
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    with (
+        patch("llama_mcp_bridge.installer.sys.platform", "darwin"),
+        patch("llama_mcp_bridge.installer.subprocess.run") as mock_run,
+    ):
+        _generate_service_file(dry_run=False)
+
+    plist_path = tmp_path / "com.llama-server.plist"
+    data = plistlib.loads(plist_path.read_bytes())
+    assert data["WorkingDirectory"] == str(tmp_path)
+    assert data["EnvironmentVariables"]["LLAMA_MCP_HOME"] == str(tmp_path)
+
+    cmds = [c.args[0] for c in mock_run.call_args_list]
+    assert cmds[0][0:2] == ["launchctl", "bootout"]
+    assert cmds[0][2].startswith("gui/")
+    assert cmds[1][0:2] == ["launchctl", "bootstrap"]
+    assert cmds[1][2].startswith("gui/")
+
+    mock_run.reset_mock()
+    with (
+        patch("llama_mcp_bridge.installer.sys.platform", "darwin"),
+        patch("llama_mcp_bridge.installer.subprocess.run") as mock_un_run,
+    ):
+        _uninstall_bridge(dry_run=False, yes=True)
+
+    un_cmds = [c.args[0] for c in mock_un_run.call_args_list]
+    assert any(c[:2] == ["launchctl", "bootout"] for c in un_cmds)
+    assert not plist_path.exists()

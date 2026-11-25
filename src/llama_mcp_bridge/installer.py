@@ -352,7 +352,7 @@ def _generate_service_file(dry_run: bool) -> None:
         )
         schtasks_cmd = [
             "schtasks", "/Create", "/F", "/TN", "LlamaServer",
-            "/SC", "ONLOGON", "/TR", f'"{bat_path}"',
+            "/SC", "ONLOGON", "/TR", f'conhost.exe --headless "{bat_path}"',
         ]
         if dry_run:
             print(f"[DRY-RUN] Would write {bat_path}:\n{bat_content}")
@@ -377,6 +377,11 @@ def _generate_service_file(dry_run: bool) -> None:
             "  <string>com.llama-server</string>\n"
             "  <key>WorkingDirectory</key>\n"
             f"  <string>{cfg.workspace}</string>\n"
+            "  <key>EnvironmentVariables</key>\n"
+            "  <dict>\n"
+            "    <key>LLAMA_MCP_HOME</key>\n"
+            f"    <string>{cfg.workspace}</string>\n"
+            "  </dict>\n"
             "  <key>ProgramArguments</key>\n"
             "  <array>\n"
             f"    <string>{server_bin}</string>\n"
@@ -397,9 +402,16 @@ def _generate_service_file(dry_run: bool) -> None:
             return
         home.mkdir(parents=True, exist_ok=True)
         plist_path.write_text(plist_xml, encoding="utf-8")
+        uid = os.getuid() if hasattr(os, "getuid") else 501
+        domain = f"gui/{uid}"
         try:
-            subprocess.run(["launchctl", "unload", str(plist_path)], check=False)
-            subprocess.run(["launchctl", "load", "-w", str(plist_path)], check=False)
+            subprocess.run(
+                ["launchctl", "bootout", domain, str(plist_path)],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            subprocess.run(["launchctl", "bootstrap", domain, str(plist_path)], check=False)
         except FileNotFoundError:
             pass
         return
@@ -728,12 +740,22 @@ def _uninstall_bridge(dry_run: bool, yes: bool) -> None:
         bat_path = workspace / "start-llama-server.bat"
         bat_path.unlink(missing_ok=True)
     elif sys.platform == "darwin":
+        uid = os.getuid() if hasattr(os, "getuid") else 501
+        domain = f"gui/{uid}"
         for plist_path in (
             Path(get_config_home()) / "com.llama-server.plist",
             Path.home() / "Library" / "LaunchAgents" / "com.llama-server.plist",
         ):
             if plist_path.exists():
-                subprocess.run(["launchctl", "unload", str(plist_path)], check=False)
+                try:
+                    subprocess.run(
+                        ["launchctl", "bootout", domain, str(plist_path)],
+                        check=False,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except FileNotFoundError:
+                    pass
                 plist_path.unlink(missing_ok=True)
     elif sys.platform.startswith("linux"):
         systemd_unit = Path.home() / ".config" / "systemd" / "user" / "llama-server.service"
