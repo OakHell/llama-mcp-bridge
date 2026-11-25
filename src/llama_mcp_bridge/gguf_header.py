@@ -258,7 +258,7 @@ def recommend_gguf_tuning(
     max_allowed_ctx = min(meta.max_context_length, ctx_ceiling)
     candidates = [c for c in (32768, 16384, 8192, 4096, 2048) if c <= max_allowed_ctx]
     if not candidates:
-        candidates = [max(512, max_allowed_ctx)]
+        candidates = [max(1, max_allowed_ctx)]
 
     if profile.gpu_vendor == "cpu" or profile.vram_gb <= 0:
         cpu_ctx = min(max_allowed_ctx, 4096 if mode == "conservative" else 8192)
