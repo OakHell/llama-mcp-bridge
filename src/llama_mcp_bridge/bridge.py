@@ -7,20 +7,21 @@
 # ///
 
 import base64
-from fnmatch import fnmatch
 import glob as glob_mod
 import mimetypes
 import os
-from pathlib import Path
 import threading
+from fnmatch import fnmatch
+from pathlib import Path
 from typing import Any
-from fastmcp import FastMCP
+
 import pathspec
 import requests
+from fastmcp import FastMCP
 
-from llama_mcp_bridge.config import BridgeConfig, load_config
-from llama_mcp_bridge.supervisor import LlamaSupervisor
+from llama_mcp_bridge.config import load_config
 from llama_mcp_bridge.hygiene import clean_mcp_output
+from llama_mcp_bridge.supervisor import LlamaSupervisor
 
 mcp = FastMCP("Local Model Specialist")
 
@@ -468,7 +469,7 @@ def query_llama(
     except requests.exceptions.Timeout:
         return f"Error: Local model ({model}) timed out after {timeout} seconds."
     except Exception as e:
-        return f"Error communicating with llama-server: {str(e)}"
+        return f"Error communicating with llama-server: {e!s}"
 
 
 @mcp.tool()

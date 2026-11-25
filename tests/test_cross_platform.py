@@ -62,6 +62,7 @@ def test_macos_apple_silicon_sysctl():
 
 def test_supervisor_windows_popen_and_stop():
     import subprocess
+
     from llama_mcp_bridge.config import BridgeConfig
     from llama_mcp_bridge.supervisor import LlamaSupervisor
 
@@ -89,6 +90,7 @@ def test_supervisor_windows_popen_and_stop():
 
 def test_supervisor_posix_popen():
     import os
+
     from llama_mcp_bridge.config import BridgeConfig
     from llama_mcp_bridge.supervisor import LlamaSupervisor
 
@@ -152,6 +154,7 @@ def test_load_config_custom_workspace_and_relative_paths(monkeypatch, tmp_path: 
 
 def test_bridge_example_ini_parity(monkeypatch, tmp_path: Path):
     import shutil
+
     from llama_mcp_bridge.config import load_config
 
     example_ini = Path(__file__).resolve().parents[1] / "bridge.example.ini"

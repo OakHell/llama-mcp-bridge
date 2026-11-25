@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 from llama_mcp_bridge.bridge import ask_digest, ask_vision
 
 

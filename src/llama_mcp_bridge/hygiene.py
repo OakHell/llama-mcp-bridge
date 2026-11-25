@@ -9,8 +9,7 @@ without corrupting nested code blocks, LaTeX equations, or raw indentation.
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
-
+from typing import Any
 
 # =====================================================================
 # 1. Input Normalisation & Safety Guards
@@ -27,7 +26,7 @@ class InputSafetyGuard:
     )
 
     @classmethod
-    def is_passthrough(cls, raw_output: Any) -> Tuple[bool, Any]:
+    def is_passthrough(cls, raw_output: Any) -> tuple[bool, Any]:
         if raw_output is None:
             return True, ""
         if not isinstance(raw_output, str):
@@ -66,7 +65,7 @@ class BlockProtector:
     INLINE_CODE_RE = re.compile(r'(`[^`\n]+`)')
 
     def __init__(self):
-        self.vault: Dict[str, str] = {}
+        self.vault: dict[str, str] = {}
         self._counter = 0
 
     def mask(self, text: str) -> str:
@@ -108,7 +107,7 @@ class StructuralContentDetector:
     STEP_LABEL_RE = re.compile(r'(?i)\b(?:step|stage|phase)\s+\d+[:\-]')
 
     @classmethod
-    def analyze(cls, text: str) -> Dict[str, Any]:
+    def analyze(cls, text: str) -> dict[str, Any]:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         if not lines:
             return {"is_structured": False, "structural_ratio": 0.0, "elements": 0}
@@ -192,7 +191,7 @@ class BoundaryDetector:
     )
 
     @classmethod
-    def strip_explicit_tags(cls, text: str) -> Tuple[str, int]:
+    def strip_explicit_tags(cls, text: str) -> tuple[str, int]:
         initial_len = len(text)
         cleaned = cls.CLOSED_TAG_RE.sub("", text)
         cleaned = cls.BRACKETED_TAG_RE.sub("", cleaned)
@@ -200,7 +199,7 @@ class BoundaryDetector:
         return cleaned.strip(), chars_removed
 
     @classmethod
-    def handle_unclosed_tags(cls, text: str) -> Tuple[str, int]:
+    def handle_unclosed_tags(cls, text: str) -> tuple[str, int]:
         """
         Handles streaming or truncated generations where <think> opened
         at the root, but the closing tag was never generated.
@@ -244,7 +243,7 @@ class BoundaryDetector:
         return "", initial_len
 
     @classmethod
-    def extract_from_keyword_markers(cls, text: str) -> Tuple[Optional[str], int]:
+    def extract_from_keyword_markers(cls, text: str) -> tuple[str | None, int]:
         """
         Extracts payload across keyword markers with structural protection.
         Guarantees structured breakdowns, steps, and lists are NEVER dropped.
@@ -289,7 +288,7 @@ class BoundaryDetector:
         return None, 0
 
     @classmethod
-    def extract_from_thematic_break(cls, text: str) -> Tuple[Optional[str], int]:
+    def extract_from_thematic_break(cls, text: str) -> tuple[str | None, int]:
         """
         Splits by '---' only when the preamble is definitively validated as a monologue,
         preserving multi-section Markdown documents.

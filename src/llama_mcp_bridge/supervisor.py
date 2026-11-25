@@ -5,10 +5,7 @@ import subprocess
 import sys
 import threading
 import time
-from contextlib import contextmanager
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Optional
 
 import requests
 from requests.exceptions import ConnectionError, Timeout
@@ -45,7 +42,7 @@ class ServerHealthStatus:
     is_healthy: bool = False
     last_check_time: float = 0.0
     error_message: str = ""
-    process_id: Optional[int] = None
+    process_id: int | None = None
 
 
 class LlamaSupervisor:
@@ -57,7 +54,7 @@ class LlamaSupervisor:
     is running and healthy before attempting to communicate with it.
     """
 
-    def __init__(self, config: Optional[LlamaServerConfig] = None):
+    def __init__(self, config: LlamaServerConfig | None = None):
         """
         Initialize the LlamaSupervisor with optional configuration.
 
@@ -66,7 +63,7 @@ class LlamaSupervisor:
                    uses default configuration with auto_spawn enabled.
         """
         self.config = config or LlamaServerConfig()
-        self._process: Optional[subprocess.Popen] = None
+        self._process: subprocess.Popen | None = None
         self._health_status: ServerHealthStatus = ServerHealthStatus()
         self._lock = threading.Lock()
         self._running = False
@@ -125,12 +122,12 @@ class LlamaSupervisor:
             self._running = True
             return True
         except FileNotFoundError:
-            error_msg = f"Server binary not found: {(getattr(self.config, "llama_server_bin", "") or getattr(self.config, "binary", "") or "llama-server")}"
+            error_msg = f"Server binary not found: {binary_bin}"
             self._health_status.is_healthy = False
             self._health_status.error_message = error_msg
             return False
         except Exception as e:
-            error_msg = f"Failed to start server: {str(e)}"
+            error_msg = f"Failed to start server: {e!s}"
             self._health_status.is_healthy = False
             self._health_status.error_message = error_msg
             return False
@@ -275,7 +272,7 @@ class LlamaSupervisor:
                 self._health_status.error_message = "Server stopped"
                 return True
             except Exception as e:
-                self._health_status.error_message = f"Failed to stop server: {str(e)}"
+                self._health_status.error_message = f"Failed to stop server: {e!s}"
                 return False
 
     def restart(self) -> bool:
@@ -288,7 +285,7 @@ class LlamaSupervisor:
         self.stop()
         return self.ensure_running()
 
-    def get_process_id(self) -> Optional[int]:
+    def get_process_id(self) -> int | None:
         """
         Get the process ID of the running server.
 
@@ -376,7 +373,7 @@ def create_supervisor(
 # Ensure cleanup on module exit
 def _module_cleanup() -> None:
     """Cleanup function for module-level supervisor."""
-    pass  # Cleanup handled by instance methods
+    # Cleanup handled by instance methods
 
 
 # Register module-level cleanup (optional, can be overridden)

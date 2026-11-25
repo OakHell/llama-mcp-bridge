@@ -1,9 +1,10 @@
 from pathlib import Path
+
 from llama_mcp_bridge.bridge import (
-    _discover_ancestor_gitignores,
-    _is_gitignored,
-    _expand_target_files,
     _build_prompt_with_files,
+    _discover_ancestor_gitignores,
+    _expand_target_files,
+    _is_gitignored,
 )
 
 

@@ -1,10 +1,9 @@
-import pytest
 from llama_mcp_bridge.hygiene import (
-    InputSafetyGuard,
     BlockProtector,
-    StructuralContentDetector,
     BoundaryDetector,
+    InputSafetyGuard,
     SanitizationAuditRecord,
+    StructuralContentDetector,
     clean_mcp_output,
 )
 

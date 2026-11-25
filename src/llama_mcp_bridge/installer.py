@@ -154,35 +154,6 @@ def _generate_service_file(dry_run: bool) -> None:
         )
         return
 
-    if sys.platform == "darwin" or platform.system() == "Darwin":
-        home = get_config_home()
-        plist_path = home / "com.llama-mcp-bridge.plist"
-        plist_xml = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
-            '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
-            '<plist version="1.0">\n'
-            "<dict>\n"
-            "  <key>Label</key>\n"
-            "  <string>com.llama-mcp-bridge</string>\n"
-            "  <key>ProgramArguments</key>\n"
-            "  <array>\n"
-            "    <string>/usr/bin/env</string>\n"
-            "    <string>python3</string>\n"
-            "    <string>-m</string>\n"
-            "    <string>llama_mcp_bridge</string>\n"
-            "  </array>\n"
-            "  <key>RunAtLoad</key>\n"
-            "  <true/>\n"
-            "</dict>\n"
-            "</plist>\n"
-        )
-        if dry_run:
-            print(f"[DRY-RUN] Would write {plist_path}")
-            return
-        home.mkdir(parents=True, exist_ok=True)
-        plist_path.write_text(plist_xml, encoding="utf-8")
-
 
 def main() -> None:
     """Main entry point for the installer CLI."""
