@@ -21,8 +21,9 @@ import requests
 from fastmcp import FastMCP
 
 from llama_mcp_bridge.config import load_config
+from llama_mcp_bridge.hardware import detect_hardware
 from llama_mcp_bridge.hygiene import clean_mcp_output
-from llama_mcp_bridge.supervisor import LlamaSupervisor
+from llama_mcp_bridge.supervisor import LlamaSupervisor, classify_inference_error
 
 mcp = FastMCP("Local Model Specialist")
 
@@ -451,6 +452,30 @@ def query_llama(
             timeout=timeout,
         )
 
+        if response.status_code in (500, 503):
+            exc = RuntimeError(f"HTTP {response.status_code}: {response.text[:300]}")
+            is_oom, diag = classify_inference_error(
+                exc,
+                supervisor.get_stderr_tail(),
+                model,
+                detect_hardware(),
+                config.residency,
+            )
+            if is_oom and config.fallback_on_oom and model != "digest" and not image_data_uris:
+                fallback_out = query_llama(
+                    model="digest",
+                    system_prompt=system_prompt,
+                    prompt=prompt,
+                    max_tokens=max_tokens,
+                    timeout=timeout,
+                    image_data_uris=None,
+                    json_schema=json_schema,
+                )
+                return (
+                    f"[Notice: Preset '{model}' hit VRAM/RAM OOM; automatically fell back to 'digest'.]\n\n"
+                    f"{fallback_out}"
+                )
+            return diag
         if response.status_code != 200:
             return f"Error: Local model server returned status {response.status_code} ({response.text[:200]})"
 
@@ -467,10 +492,29 @@ def query_llama(
             return "Error: Empty response content from local model."
         return content
 
-    except requests.exceptions.Timeout:
-        return f"Error: Local model ({model}) timed out after {timeout} seconds."
-    except (requests.exceptions.RequestException, ValueError, KeyError) as e:
-        return f"Error communicating with llama-server: {e!s}"
+    except (TimeoutError, requests.exceptions.Timeout, requests.exceptions.RequestException, ValueError, KeyError) as e:
+        is_oom, diag = classify_inference_error(
+            e,
+            supervisor.get_stderr_tail(),
+            model,
+            detect_hardware(),
+            config.residency,
+        )
+        if is_oom and config.fallback_on_oom and model != "digest" and not image_data_uris:
+            fallback_out = query_llama(
+                model="digest",
+                system_prompt=system_prompt,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                timeout=timeout,
+                image_data_uris=None,
+                json_schema=json_schema,
+            )
+            return (
+                f"[Notice: Preset '{model}' hit VRAM/RAM OOM; automatically fell back to 'digest'.]\n\n"
+                f"{fallback_out}"
+            )
+        return diag
 
 
 @mcp.tool()

@@ -82,3 +82,53 @@ def test_get_bridge_status_online_and_offline(mock_status):
     offline = json.loads(get_bridge_status())
     assert offline["healthy"] is False
     assert offline["models"] == {}
+
+
+@patch("llama_mcp_bridge.bridge.LlamaSupervisor.ensure_running")
+@patch("llama_mcp_bridge.bridge.requests.post")
+def test_oom_http_500_classification_without_fallback(mock_post, mock_ensure, monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.bridge import ask_coder
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    (tmp_path / "bridge.ini").write_text("[bridge]\nfallback_on_oom = false\n", encoding="utf-8")
+
+    err_resp = MagicMock(status_code=500, text="cudaMalloc failed: out of memory")
+    mock_post.return_value = err_resp
+
+    out = ask_coder("Write hello")
+    assert "ran out of memory" in out
+    assert "residency = stingy" in out
+    mock_post.assert_called_once()
+
+
+@patch("llama_mcp_bridge.bridge.LlamaSupervisor.ensure_running")
+@patch("llama_mcp_bridge.bridge.requests.post")
+def test_cold_swap_timeout_classification(mock_post, mock_ensure):
+    import requests
+
+    from llama_mcp_bridge.bridge import ask_coder
+
+    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
+    out = ask_coder("Write hello")
+    assert "timed out during inference or cold-swap" in out
+    assert "request_timeout_s" in out
+
+
+@patch("llama_mcp_bridge.bridge.LlamaSupervisor.ensure_running")
+@patch("llama_mcp_bridge.bridge.requests.post")
+def test_oom_fallback_on_oom_retries_digest(mock_post, mock_ensure, monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.bridge import ask_coder
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    (tmp_path / "bridge.ini").write_text("[bridge]\nfallback_on_oom = true\n", encoding="utf-8")
+
+    oom_resp = MagicMock(status_code=500, text="out of memory")
+    ok_resp = MagicMock(status_code=200)
+    ok_resp.json.return_value = {"choices": [{"message": {"content": "Fallback answer"}}]}
+    mock_post.side_effect = [oom_resp, ok_resp]
+
+    out = ask_coder("Write hello")
+    assert "[Notice: Preset 'coder' hit VRAM/RAM OOM; automatically fell back to 'digest'.]" in out
+    assert "Fallback answer" in out
+    assert mock_post.call_count == 2
+    assert mock_post.call_args_list[1].kwargs["json"]["model"] == "digest"

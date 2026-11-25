@@ -5,6 +5,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Self
 
@@ -69,6 +70,8 @@ class LlamaSupervisor:
         self._lock = threading.Lock()
         self._running = False
         self._atexit_registered = False
+        self._stderr_tail: deque[str] = deque(maxlen=40)
+        self._stderr_thread: threading.Thread | None = None
 
     def _get_server_url(self) -> str:
         """Construct the server URL from configuration."""
@@ -121,6 +124,7 @@ class LlamaSupervisor:
             )
             self._health_status.process_id = self._process.pid
             self._running = True
+            self._start_stderr_reader()
             return True
         except FileNotFoundError:
             error_msg = f"Server binary not found: {binary_bin}"
@@ -132,6 +136,27 @@ class LlamaSupervisor:
             self._health_status.is_healthy = False
             self._health_status.error_message = error_msg
             return False
+
+    def _start_stderr_reader(self) -> None:
+        """Start a daemon thread draining process stderr into a bounded deque."""
+        proc = self._process
+        if proc is None or proc.stderr is None:
+            return
+
+        def _drain() -> None:
+            try:
+                for line in proc.stderr:
+                    text = line.decode("utf-8", errors="replace") if isinstance(line, bytes) else str(line)
+                    self._stderr_tail.append(text.rstrip())
+            except (OSError, ValueError):
+                pass
+
+        self._stderr_thread = threading.Thread(target=_drain, daemon=True)
+        self._stderr_thread.start()
+
+    def get_stderr_tail(self) -> str:
+        """Return recent stderr lines from the managed llama-server subprocess."""
+        return "\n".join(self._stderr_tail)
 
     def _check_health(self) -> bool:
         """
@@ -405,3 +430,42 @@ def _module_cleanup() -> None:
 
 # Register module-level cleanup (optional, can be overridden)
 # atexit.register(_module_cleanup)
+
+
+_OOM_SIGNATURES = (
+    "out of memory",
+    "failed to allocate",
+    "cudamalloc",
+    "vk::outofdevicememoryerror",
+    "insufficient memory",
+    "cannot allocate memory",
+    "metal",
+)
+
+
+def classify_inference_error(
+    exc: Exception,
+    stderr_tail: str,
+    preset: str,
+    profile: Any,
+    residency: str,
+) -> tuple[bool, str]:
+    """Classify an inference error as OOM or timeout/other and return (is_oom, message)."""
+    err_text = f"{exc}\n{stderr_tail}".lower()
+    if any(sig in err_text for sig in _OOM_SIGNATURES):
+        msg = (
+            f"Error: Preset '{preset}' ran out of memory on tier '{profile.tier}' "
+            f"(residency='{residency}'). Recovery: set residency = stingy in bridge.ini, "
+            f"close GPU-heavy applications, or use ask_digest."
+        )
+        return True, msg
+
+    if isinstance(exc, (TimeoutError, requests.exceptions.Timeout)) or "timed out" in err_text:
+        msg = (
+            f"Error: Preset '{preset}' timed out during inference or cold-swap on tier '{profile.tier}' "
+            f"(residency='{residency}'). Recovery: increase request_timeout_s in bridge.ini or "
+            f"pre-warm the model before heavy requests."
+        )
+        return False, msg
+
+    return False, f"Error communicating with llama-server for preset '{preset}': {exc!s}"

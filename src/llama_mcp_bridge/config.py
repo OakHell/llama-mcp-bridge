@@ -25,6 +25,7 @@ class BridgeConfig:
     llama_server_bin: str = ""
     auto_spawn: bool = True
     residency: str = "moderate"
+    fallback_on_oom: bool = False
     health_timeout_s: int = 30
     request_timeout_s: int = 90
     max_tokens: int = 4096
@@ -124,7 +125,7 @@ def load_config() -> BridgeConfig:
         "max_images",
         "max_total_chars",
     }
-    bool_fields = {"use_gitignore", "auto_spawn"}
+    bool_fields = {"use_gitignore", "auto_spawn", "fallback_on_oom"}
 
     for key, value in config_dict.items():
         if hasattr(config, key):
@@ -132,7 +133,7 @@ def load_config() -> BridgeConfig:
                 if key in int_fields:
                     setattr(config, key, int(value))
                 elif key in bool_fields:
-                    setattr(config, key, value.lower() in ("true", "1", "yes"))
+                    setattr(config, key, value.strip().lower() in ("true", "1", "yes", "on"))
                 elif key in ("include", "ignore", "gitignore_paths"):
                     setattr(config, key, [v.strip() for v in value.split(",") if v.strip()])
                 elif key == "default_ignores":

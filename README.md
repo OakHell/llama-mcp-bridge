@@ -97,6 +97,7 @@ uv run pytest -v
 Relative paths in `bridge.ini` (`models_dir`, `models_ini`, `llama_server_bin`) resolve relative to `workspace`. See [bridge.example.ini](bridge.example.ini) for all options (`host`, `port`, `auto_spawn`, `residency`, `health_timeout_s`, `request_timeout_s`, `models_ini`).
 
 - **Residency Profiles (`residency`):** `stingy` (`15s` idle, `1` model), `moderate` (`120s` idle, `1`–`2` models; default), `snappy` (`600s` idle, `2`–`3` models on `12gb+`).
+- **OOM & Timeout Recovery (`fallback_on_oom`):** Classifies VRAM OOM vs. cold-swap timeouts with actionable recovery steps; set `fallback_on_oom = true` in `bridge.ini` to auto-retry text requests on `digest`.
 
 ## MCP Client Configuration (`mcp_config.json`)
 
