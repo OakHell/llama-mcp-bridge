@@ -110,6 +110,8 @@ Manage, add, or remove specialist presets anytime after installation without re-
 2. **POSIX (Linux, macOS, FreeBSD):** `~/.llama-mcp-bridge`
 3. **Windows:** `%LOCALAPPDATA%\llama-mcp-bridge`
 
+> **Upcoming (`v0.6.0`):** Global workspace enrolment (`llama-mcp-install --register` / active home pointer) will persist custom installation paths (such as `/mnt/ai`) across all `llama-mcp-*` commands and MCP clients without needing to pass `LLAMA_MCP_HOME` every time.
+
 Relative paths in `bridge.ini` (`models_dir`, `models_ini`, `llama_server_bin`) resolve relative to `workspace`. See [bridge.example.ini](bridge.example.ini) for all options (`host`, `port`, `auto_spawn`, `residency`, `health_timeout_s`, `request_timeout_s`, `models_ini`).
 
 - **Residency Profiles (`residency`):** `stingy` (`15s` idle, `1` model), `moderate` (`120s` idle, `1`–`2` models; default), `snappy` (`600s` idle, `2`–`3` models on `12gb+`).
@@ -162,7 +164,7 @@ uv run ruff check .
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the full release history (`v0.1.0`–`v0.5.x`) and upcoming milestones: `v0.6.0` (custom `--hf` / local `--file` GGUFs, baseline tuning notice, and MCP client restart reminder), `v0.7.0` (GGUF binary header KV-cache heuristics via `--tune-mode conservative|approximate`), and `v0.8.0` (bundled `skills/llama-mcp-setup/SKILL.md` + `llama-mcp-install --install-skill`).
+See [ROADMAP.md](ROADMAP.md) for the full release history (`v0.1.0`–`v0.5.x`) and upcoming milestones: `v0.6.0` (custom `--hf` / local `--file` GGUFs, baseline tuning notice, MCP client restart reminder, and global workspace enrolment via `--register`), `v0.7.0` (GGUF binary header KV-cache heuristics via `--tune-mode conservative|approximate`), and `v0.8.0` (bundled `skills/llama-mcp-setup/SKILL.md` + `llama-mcp-install --install-skill`).
 
 ## License
 
