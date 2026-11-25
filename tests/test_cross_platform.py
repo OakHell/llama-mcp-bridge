@@ -274,9 +274,12 @@ def test_auto_install_prebuilt_yes_extracts_and_updates_ini(tmp_path: Path):
 
 
 def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
+    import os
+
     from llama_mcp_bridge.hardware import SystemProfile
     from llama_mcp_bridge.installer import _run_tui_wizard
 
+    custom_ws = tmp_path / "custom_ws"
     monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
     profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
 
@@ -285,11 +288,13 @@ def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
         patch("llama_mcp_bridge.installer._find_llama_server", return_value=None),
         patch(
             "llama_mcp_bridge.installer.Prompt.ask",
-            side_effect=[str(tmp_path), str(tmp_path / "models"), "skip"],
+            side_effect=[str(custom_ws), str(custom_ws / "models"), "skip"],
         ),
         patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True]),
     ):
         _run_tui_wizard()
 
-    assert (tmp_path / "models.ini").exists()
-    assert (tmp_path / "bridge.ini").exists()
+    assert os.environ["LLAMA_MCP_HOME"] == str(custom_ws)
+    assert (custom_ws / "models.ini").exists()
+    assert (custom_ws / "bridge.ini").exists()
+    assert "models_ini =" in (custom_ws / "bridge.ini").read_text(encoding="utf-8")

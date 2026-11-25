@@ -325,6 +325,7 @@ def _run_tui_wizard() -> None:
     workspace = Path(ws_str).expanduser()
     models_str = Prompt.ask("Models directory", default=str(workspace / "models"))
     models_dir = Path(models_str).expanduser()
+    found_bin = _find_llama_server(workspace, cfg.llama_server_bin)
 
     mode = "skip"
     if not found_bin:
@@ -349,6 +350,7 @@ def _run_tui_wizard() -> None:
         console.print("[yellow]Aborted.[/yellow]")
         return
 
+    os.environ["LLAMA_MCP_HOME"] = str(workspace)
     workspace.mkdir(parents=True, exist_ok=True)
     ini_content = generate_models_ini(profile, models_dir=str(models_dir))
     (workspace / "models.ini").write_text(ini_content, encoding="utf-8")
@@ -356,7 +358,8 @@ def _run_tui_wizard() -> None:
     bridge_ini = workspace / "bridge.ini"
     if not bridge_ini.exists():
         bridge_ini.write_text(
-            f"[bridge]\nworkspace = {workspace}\nmodels_dir = {models_dir}\n",
+            f"[bridge]\nworkspace = {workspace}\nmodels_dir = {models_dir}\n"
+            f"models_ini = {workspace / 'models.ini'}\n",
             encoding="utf-8",
         )
 
@@ -371,6 +374,11 @@ def _run_tui_wizard() -> None:
         indent=2,
     )
     console.print(Panel(mcp_snippet, title="Add to mcp_config.json", border_style="green"))
+    gguf_lines = [ln.strip() for ln in ini_content.splitlines() if ln.strip().startswith("model = ")]
+    if gguf_lines:
+        console.print("[bold]Required GGUF model paths:[/bold]")
+        for ln in gguf_lines:
+            console.print(f"  {ln}")
 
 
 def main() -> None:
