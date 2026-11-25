@@ -397,7 +397,7 @@ def test_verify_tier_models_reports_ok_and_suggestions_on_404():
         url = req if isinstance(req, str) else req.full_url
         if "api/models" in url:
             return search_resp
-        if "MiniCPM-V-2_6-Q4_K_M" in url:
+        if "MiniCPM-V-4_6-Q4_K_M" in url:
             raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
         return ok_resp
 

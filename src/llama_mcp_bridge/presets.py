@@ -1,5 +1,6 @@
 """VRAM-tier presets and models.ini generation for llama-mcp-bridge."""
 
+import concurrent.futures
 import json
 import urllib.error
 import urllib.parse
@@ -116,10 +117,10 @@ def generate_models_ini(profile: SystemProfile, models_dir: str = "/mnt/ai/model
                 "coder": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
                 "coder-long": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
                 "vision-deep": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
-                "vision": "MiniCPM-V-2_6-Q4_K_M.gguf",
-                "reasoner": "granite-3.1-2b-instruct-q4_k_m.gguf",
-                "analyst": "Ministral-3B-Reasoning-2512-Q4_K_M.gguf",
-                "generalist": "gemma-2-2b-it-q4_k_m.gguf",
+                "vision": "MiniCPM-V-4_6-Q4_K_M.gguf",
+                "reasoner": "granite-4.2-3b-Q4_K_M.gguf",
+                "analyst": "Ministral-3-3B-Reasoning-2512.Q4_K_M.gguf",
+                "generalist": "gemma-4-E2B-it-Q4_K_M.gguf",
                 "digest": "LFM3-1.7B-Q8_0.gguf",
             },
             "mmproj_overrides": {
@@ -263,11 +264,11 @@ _STANDARD_SPECS: list[dict[str, Any]] = [
 _COMPACT_6GB_SPECS: list[dict[str, Any]] = [
     {"role": "coder-fast", "filename": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf", "repo": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF", "size_gb": 1.1},
     {"role": "coder", "filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf", "repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF", "size_gb": 1.1},
-    {"role": "vision", "filename": "MiniCPM-V-2_6-Q4_K_M.gguf", "repo": "openbmb/MiniCPM-V-2_6-gguf", "size_gb": 4.7},
-    {"role": "vision-mmproj", "filename": "mmproj-model-f16.gguf", "repo": "openbmb/MiniCPM-V-2_6-gguf", "size_gb": 0.8},
-    {"role": "reasoner", "filename": "granite-3.1-2b-instruct-q4_k_m.gguf", "repo": "bartowski/granite-3.1-2b-instruct-GGUF", "size_gb": 1.6},
-    {"role": "analyst", "filename": "Ministral-3B-Reasoning-2512-Q4_K_M.gguf", "repo": "unsloth/Ministral-3B-Reasoning-2512-GGUF", "size_gb": 2.1},
-    {"role": "generalist", "filename": "gemma-2-2b-it-q4_k_m.gguf", "repo": "bartowski/gemma-2-2b-it-GGUF", "size_gb": 1.7},
+    {"role": "vision", "filename": "MiniCPM-V-4_6-Q4_K_M.gguf", "repo": "openbmb/MiniCPM-V-4_6-gguf", "size_gb": 0.5},
+    {"role": "vision-mmproj", "filename": "mmproj-model-f16.gguf", "repo": "openbmb/MiniCPM-V-4_6-gguf", "size_gb": 1.1},
+    {"role": "reasoner", "filename": "granite-4.2-3b-Q4_K_M.gguf", "repo": "ibm-granite/granite-4.2-3b-GGUF", "size_gb": 2.0},
+    {"role": "analyst", "filename": "Ministral-3-3B-Reasoning-2512.Q4_K_M.gguf", "repo": "MaziyarPanahi/Ministral-3-3B-Reasoning-2512-GGUF", "size_gb": 2.1},
+    {"role": "generalist", "filename": "gemma-4-E2B-it-Q4_K_M.gguf", "repo": "unsloth/gemma-4-E2B-it-GGUF", "size_gb": 2.5},
     {"role": "digest", "filename": "LFM3-1.7B-Q8_0.gguf", "repo": "LiquidAI/LFM3-1.7B-GGUF", "size_gb": 1.8},
 ]
 
@@ -292,7 +293,11 @@ def get_tier_model_specs(tier: str) -> list[dict[str, Any]]:
 
 def verify_model_url(url: str, timeout: float = 10.0) -> tuple[bool, int | None]:
     """Check whether a Hugging Face model URL exists via HTTP HEAD."""
-    req = urllib.request.Request(url, method="HEAD")
+    req = urllib.request.Request(
+        url,
+        method="HEAD",
+        headers={"User-Agent": "llama-mcp-bridge/0.1.0"},
+    )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             status = getattr(resp, "status", 200)
@@ -323,25 +328,36 @@ def search_hf_gguf_models(query: str, limit: int = 5, timeout: float = 10.0) -> 
 
 
 def verify_tier_models(tier: str | None = None) -> list[dict[str, Any]]:
-    """Verify model URLs for one tier (or all tiers) and return status + suggestions."""
+    """Verify model URLs concurrently for one tier (or all tiers) and return status + suggestions."""
     tiers = [tier] if tier else list(TIER_MODEL_REGISTRY.keys())
+    entries = [(t, spec) for t in tiers for spec in get_tier_model_specs(t)]
+    unique_urls = {spec["url"] for _, spec in entries}
+
+    def _check(url: str) -> tuple[str, bool, int | None]:
+        ok, size_bytes = verify_model_url(url)
+        return url, ok, size_bytes
+
+    url_cache: dict[str, tuple[bool, int | None]] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        for url, ok, size_bytes in pool.map(_check, unique_urls):
+            url_cache[url] = (ok, size_bytes)
+
     results: list[dict[str, Any]] = []
-    for t in tiers:
-        for spec in get_tier_model_specs(t):
-            ok, size_bytes = verify_model_url(spec["url"])
-            suggestions: list[dict[str, Any]] = []
-            if not ok:
-                stem = spec["filename"].replace(".gguf", "").split("-")[0]
-                suggestions = search_hf_gguf_models(stem, limit=3)
-            results.append(
-                {
-                    "tier": t,
-                    "role": spec["role"],
-                    "filename": spec["filename"],
-                    "url": spec["url"],
-                    "ok": ok,
-                    "size_bytes": size_bytes,
-                    "suggestions": suggestions,
-                }
-            )
+    for t, spec in entries:
+        ok, size_bytes = url_cache[spec["url"]]
+        suggestions: list[dict[str, Any]] = []
+        if not ok:
+            stem = spec["filename"].replace(".gguf", "").split("-")[0]
+            suggestions = search_hf_gguf_models(stem, limit=3)
+        results.append(
+            {
+                "tier": t,
+                "role": spec["role"],
+                "filename": spec["filename"],
+                "url": spec["url"],
+                "ok": ok,
+                "size_bytes": size_bytes,
+                "suggestions": suggestions,
+            }
+        )
     return results
