@@ -166,9 +166,14 @@ class LlamaSupervisor:
             True if server is healthy, False otherwise.
         """
         try:
+            raw_timeout = getattr(
+                self.config,
+                "timeout_seconds",
+                getattr(self.config, "request_timeout_s", DEFAULT_TIMEOUT_SECONDS),
+            )
             response = requests.get(
                 self._get_health_url(),
-                timeout=self.config.timeout_seconds,
+                timeout=min(float(raw_timeout), 2.0),
                 allow_redirects=True,
             )
             return response.status_code == 200
@@ -183,8 +188,10 @@ class LlamaSupervisor:
             True if server became healthy, False if timeout or error occurred.
         """
         retries = 0
-        while retries < self.config.max_retries:
-            time.sleep(self.config.poll_interval_seconds)
+        max_retries = int(getattr(self.config, "max_retries", DEFAULT_MAX_RETRIES))
+        poll_interval = float(getattr(self.config, "poll_interval_seconds", DEFAULT_POLL_INTERVAL_SECONDS))
+        while retries < max_retries:
+            time.sleep(poll_interval)
             if self._check_health():
                 self._health_status.is_healthy = True
                 self._health_status.last_check_time = time.time()
@@ -194,7 +201,7 @@ class LlamaSupervisor:
 
         self._health_status.is_healthy = False
         self._health_status.error_message = (
-            f"Server failed to become healthy after {self.config.max_retries} attempts"
+            f"Server failed to become healthy after {max_retries} attempts"
         )
         return False
 

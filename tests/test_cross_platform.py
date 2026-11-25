@@ -794,3 +794,19 @@ def test_download_tier_models_invalid_preset_raises(tmp_path: Path):
     profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
     with pytest.raises(ValueError, match="Unknown preset"):
         _download_tier_models(profile, tmp_path, dry_run=False, presets=["nonexistent"])
+
+
+def test_supervisor_unmocked_check_health_with_bridge_config():
+    import requests
+
+    from llama_mcp_bridge.config import BridgeConfig
+    from llama_mcp_bridge.supervisor import LlamaSupervisor
+
+    cfg = BridgeConfig(host="127.0.0.1", port=59999, request_timeout_s=90)
+    sup = LlamaSupervisor(cfg)
+    with patch("llama_mcp_bridge.supervisor.requests.get", side_effect=requests.exceptions.ConnectionError("refused")) as mock_get:
+        status = sup.get_status()
+
+    assert status["healthy"] is False
+    mock_get.assert_called_once()
+    assert mock_get.call_args.kwargs["timeout"] == 2.0
