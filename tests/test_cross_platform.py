@@ -290,7 +290,7 @@ def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
             "llama_mcp_bridge.installer.Prompt.ask",
             side_effect=[str(custom_ws), str(custom_ws / "models"), "skip"],
         ),
-        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True]),
+        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True, False]),
     ):
         _run_tui_wizard()
 
@@ -298,3 +298,54 @@ def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
     assert (custom_ws / "models.ini").exists()
     assert (custom_ws / "bridge.ini").exists()
     assert "models_ini =" in (custom_ws / "bridge.ini").read_text(encoding="utf-8")
+
+
+def test_download_tier_models_skips_existing(tmp_path: Path):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _download_tier_models
+    from llama_mcp_bridge.presets import get_tier_model_specs
+
+    for spec in get_tier_model_specs("8gb"):
+        (tmp_path / spec["filename"]).write_bytes(b"gguf")
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
+    with patch("llama_mcp_bridge.installer.urllib.request.urlopen") as mock_url:
+        _download_tier_models(profile, tmp_path, dry_run=False)
+    mock_url.assert_not_called()
+
+
+def test_download_tier_models_resumes_part_with_range(tmp_path: Path):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _download_tier_models
+    from llama_mcp_bridge.presets import get_tier_model_specs
+
+    specs = get_tier_model_specs("8gb")
+    first = specs[0]["filename"]
+    for spec in specs[1:]:
+        (tmp_path / spec["filename"]).write_bytes(b"done")
+    (tmp_path / f"{first}.part").write_bytes(b"abc")
+
+    resp = MagicMock()
+    resp.__enter__.return_value = resp
+    resp.status = 206
+    resp.headers = {"Content-Length": "3"}
+    resp.read.side_effect = [b"def", b""]
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "8gb")
+    with patch("llama_mcp_bridge.installer.urllib.request.urlopen", return_value=resp) as mock_url:
+        _download_tier_models(profile, tmp_path, dry_run=False)
+
+    req_sent = mock_url.call_args.args[0]
+    assert req_sent.headers["Range"] == "bytes=3-"
+    assert (tmp_path / first).read_bytes() == b"abcdef"
+    assert not (tmp_path / f"{first}.part").exists()
+
+
+def test_download_tier_models_dry_run_no_network(tmp_path: Path):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _download_tier_models
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
+    with patch("llama_mcp_bridge.installer.urllib.request.urlopen") as mock_url:
+        _download_tier_models(profile, tmp_path, dry_run=True)
+    mock_url.assert_not_called()

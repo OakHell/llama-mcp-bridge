@@ -200,3 +200,77 @@ def generate_models_ini(profile: SystemProfile, models_dir: str = "/mnt/ai/model
         lines.append("")
 
     return "\n".join(lines)
+
+
+_BASE_MODEL_SPECS: list[dict[str, Any]] = [
+    {
+        "role": "coder-fast",
+        "filename": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+        "repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+        "size_gb": 4.7,
+    },
+    {
+        "role": "coder",
+        "filename": "Qwen3.5-9B-UD-Q4_K_XL.gguf",
+        "repo": "unsloth/Qwen3.5-9B-GGUF",
+        "size_gb": 5.5,
+    },
+    {
+        "role": "vision-deep-mmproj",
+        "filename": "mmproj-BF16.gguf",
+        "repo": "unsloth/Qwen3.5-9B-GGUF",
+        "size_gb": 0.9,
+    },
+    {
+        "role": "vision",
+        "filename": "MiniCPM-V-4_6-Q4_K_M.gguf",
+        "repo": "openbmb/MiniCPM-V-4_6-gguf",
+        "size_gb": 4.8,
+    },
+    {
+        "role": "vision-mmproj",
+        "filename": "mmproj-model-f16.gguf",
+        "repo": "openbmb/MiniCPM-V-4_6-gguf",
+        "size_gb": 0.8,
+    },
+    {
+        "role": "reasoner",
+        "filename": "granite-4.2-8b-Q4_K_M.gguf",
+        "repo": "ibm-granite/granite-4.2-8b-GGUF",
+        "size_gb": 4.9,
+    },
+    {
+        "role": "analyst",
+        "filename": "Ministral-3-8B-Reasoning-2512-UD-Q4_K_XL.gguf",
+        "repo": "unsloth/Ministral-3-8B-Reasoning-2512-GGUF",
+        "size_gb": 5.1,
+    },
+    {
+        "role": "generalist",
+        "filename": "gemma-4-E4B-it-UD-Q6_K_XL.gguf",
+        "repo": "unsloth/gemma-4-E4B-it-GGUF",
+        "size_gb": 4.2,
+    },
+    {
+        "role": "digest",
+        "filename": "LFM3-1.7B-Q8_0.gguf",
+        "repo": "LiquidAI/LFM3-1.7B-GGUF",
+        "size_gb": 1.8,
+    },
+]
+
+TIER_MODEL_REGISTRY: dict[str, list[dict[str, Any]]] = {
+    tier: [
+        {
+            **spec,
+            "url": f"https://huggingface.co/{spec['repo']}/resolve/main/{spec['filename']}",
+        }
+        for spec in _BASE_MODEL_SPECS
+    ]
+    for tier in ("6gb", "8gb", "12gb", "16gb", "24gb+")
+}
+
+
+def get_tier_model_specs(tier: str) -> list[dict[str, Any]]:
+    """Return curated GGUF model specs for the given VRAM tier."""
+    return list(TIER_MODEL_REGISTRY.get(tier, TIER_MODEL_REGISTRY["8gb"]))

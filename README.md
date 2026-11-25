@@ -76,6 +76,7 @@ uv run pytest -v
 | `--mode system-bin` | Uses an existing `llama-server` binary on `PATH`. |
 | `--dry-run` | Prints planned actions without writing files or executing subprocesses. |
 | `-y`, `--yes` | Auto-confirms `llama-server` installation when undetected. |
+| `--download-models` | Downloads curated GGUF starter-pack models for your detected tier (resumable `.part` downloads). |
 | `--tui` | Launches the interactive `rich` TUI setup wizard (also auto-launched on bare `llama-mcp-install` in a TTY). |
 | `--install-service` | Generates an OS-specific user service (`systemd` on Linux, `launchd` on macOS). |
 

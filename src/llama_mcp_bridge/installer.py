@@ -9,18 +9,20 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import Progress
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from llama_mcp_bridge.config import get_config_home, load_config
 from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
-from llama_mcp_bridge.presets import generate_models_ini
+from llama_mcp_bridge.presets import generate_models_ini, get_tier_model_specs
 
 
 def _macos_release_asset(arch: str) -> str:
@@ -308,6 +310,48 @@ def _generate_service_file(dry_run: bool) -> None:
         return
 
 
+def _download_tier_models(profile: SystemProfile, models_dir: Path, dry_run: bool = False) -> None:
+    """Download curated GGUF models for the detected tier with .part resume support."""
+    specs = get_tier_model_specs(profile.tier)
+    models_dir.mkdir(parents=True, exist_ok=True)
+
+    for spec in specs:
+        target = models_dir / spec["filename"]
+        if target.exists() and target.stat().st_size > 0:
+            print(f"Skipping existing model: {target.name}")
+            continue
+        if dry_run:
+            print(f"[DRY-RUN] Would download {spec['filename']} ({spec['size_gb']} GB) from {spec['url']}")
+            continue
+
+        part = models_dir / f"{spec['filename']}.part"
+        offset = part.stat().st_size if part.exists() else 0
+        req = urllib.request.Request(spec["url"])
+        if offset > 0:
+            req.add_header("Range", f"bytes={offset}-")
+
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                status = getattr(resp, "status", 200)
+                mode = "ab" if status == 206 and offset > 0 else "wb"
+                total = int(resp.headers.get("Content-Length", "0") or 0)
+                with Progress() as progress:
+                    task = progress.add_task(f"Downloading {spec['filename']}", total=total or None)
+                    with part.open(mode) as fh:
+                        while True:
+                            chunk = resp.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            fh.write(chunk)
+                            progress.update(task, advance=len(chunk))
+            part.replace(target)
+        except urllib.error.HTTPError as err:
+            if err.code == 416 and part.exists():
+                part.replace(target)
+            else:
+                raise
+
+
 def _run_tui_wizard() -> None:
     """Interactive rich-powered setup wizard for llama-mcp-bridge."""
     console = Console()
@@ -361,6 +405,14 @@ def _run_tui_wizard() -> None:
     ini_content = generate_models_ini(profile, models_dir=str(models_dir))
     (workspace / "models.ini").write_text(ini_content, encoding="utf-8")
 
+    specs = get_tier_model_specs(profile.tier)
+    total_gb = sum(s["size_gb"] for s in specs)
+    if Confirm.ask(
+        f"Download recommended starter GGUF models for your {profile.tier} tier now (~{total_gb:.1f} GB)?",
+        default=False,
+    ):
+        _download_tier_models(profile, models_dir, dry_run=False)
+
     bridge_ini = workspace / "bridge.ini"
     if not bridge_ini.exists():
         bridge_ini.write_text(
@@ -399,6 +451,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Print planned actions without executing.")
     parser.add_argument("--install-service", action="store_true", help="Generate service unit file.")
     parser.add_argument("-y", "--yes", action="store_true", help="Auto-confirm llama-server installation.")
+    parser.add_argument("--download-models", action="store_true", help="Download curated GGUF models for tier.")
     parser.add_argument("--tui", action="store_true", help="Launch interactive rich TUI wizard.")
     parser.add_argument("--models-dir", type=str, help="Path to models directory.")
 
@@ -424,6 +477,16 @@ def main() -> None:
 
     if args.install_service:
         _generate_service_file(args.dry_run)
+
+    if args.download_models and (
+        args.dry_run
+        or args.yes
+        or (
+            sys.stdin.isatty()
+            and input(f"Download curated GGUF models into {models_dir}? [y/N]: ").strip().lower() in ("y", "yes")
+        )
+    ):
+        _download_tier_models(profile, models_dir, dry_run=args.dry_run)
 
     if args.dry_run:
         print(f"[DRY-RUN] Would write models.ini ({len(ini_content)} bytes) to {home / 'models.ini'}")
