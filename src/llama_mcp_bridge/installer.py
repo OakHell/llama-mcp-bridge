@@ -3,6 +3,7 @@
 import argparse
 import configparser
 import hashlib
+import importlib.resources
 import json
 import os
 import shutil
@@ -748,6 +749,92 @@ def _build_mcp_snippet(workspace: Path) -> str:
     return json.dumps({"mcpServers": {"local-ai": server_cfg}}, indent=2)
 
 
+def _resolve_bundled_skill_path() -> Path:
+    """Locate skills/llama-mcp-setup/SKILL.md via importlib.resources or repo-root fallback."""
+    try:
+        pkg_skill = importlib.resources.files("llama_mcp_bridge").joinpath("skills", "llama-mcp-setup", "SKILL.md")
+        pkg_path = Path(str(pkg_skill))
+        if pkg_path.is_file():
+            return pkg_path
+    except (ModuleNotFoundError, TypeError, OSError):
+        pass
+    repo_skill = Path(__file__).resolve().parents[2] / "skills" / "llama-mcp-setup" / "SKILL.md"
+    if repo_skill.is_file():
+        return repo_skill
+    raise FileNotFoundError("Bundled skills/llama-mcp-setup/SKILL.md not found.")
+
+
+def _resolve_skill_destinations(
+    target: str,
+    home_dir: Path | None = None,
+    cwd: Path | None = None,
+) -> list[Path]:
+    """Resolve destination SKILL.md paths for a harness name, 'auto', 'workspace', or custom dir."""
+    home = home_dir or Path.home()
+    work = cwd or Path.cwd()
+    norm = target.strip().lower()
+
+    if norm == "claude":
+        return [home / ".claude" / "skills" / "llama-mcp-setup" / "SKILL.md"]
+    if norm == "antigravity":
+        dests = [home / ".gemini" / "config" / "skills" / "llama-mcp-setup" / "SKILL.md"]
+        if (home / ".gemini" / "antigravity").exists():
+            dests.append(home / ".gemini" / "antigravity" / "skills" / "llama-mcp-setup" / "SKILL.md")
+        return dests
+    if norm == "gemini":
+        return [home / ".gemini" / "skills" / "llama-mcp-setup" / "SKILL.md"]
+    if norm == "cursor":
+        return [home / ".cursor" / "skills" / "llama-mcp-setup" / "SKILL.md"]
+    if norm == "workspace":
+        return [work / ".agents" / "skills" / "llama-mcp-setup" / "SKILL.md"]
+    if norm == "auto":
+        found: list[Path] = []
+        if (home / ".claude").exists():
+            found.append(home / ".claude" / "skills" / "llama-mcp-setup" / "SKILL.md")
+        if (home / ".gemini" / "config").exists():
+            found.append(home / ".gemini" / "config" / "skills" / "llama-mcp-setup" / "SKILL.md")
+        if (home / ".gemini" / "antigravity").exists():
+            found.append(home / ".gemini" / "antigravity" / "skills" / "llama-mcp-setup" / "SKILL.md")
+        if (home / ".gemini").exists():
+            found.append(home / ".gemini" / "skills" / "llama-mcp-setup" / "SKILL.md")
+        if (home / ".cursor").exists():
+            found.append(home / ".cursor" / "skills" / "llama-mcp-setup" / "SKILL.md")
+        if not found:
+            found.append(work / ".agents" / "skills" / "llama-mcp-setup" / "SKILL.md")
+        return list(dict.fromkeys(found))
+
+    custom = Path(target).expanduser()
+    if custom.name == "llama-mcp-setup":
+        return [custom / "SKILL.md"]
+    return [custom / "llama-mcp-setup" / "SKILL.md"]
+
+
+def _install_skill(
+    target: str = "auto",
+    symlink: bool = False,
+    dry_run: bool = False,
+    home_dir: Path | None = None,
+    cwd: Path | None = None,
+) -> list[Path]:
+    """Install the bundled llama-mcp-setup SKILL.md into target harness skill directories."""
+    src = _resolve_bundled_skill_path()
+    dests = _resolve_skill_destinations(target, home_dir=home_dir, cwd=cwd)
+    for dest in dests:
+        if dry_run:
+            action = "symlink" if symlink else "copy"
+            print(f"[DRY-RUN] Would {action} skill to {dest}")
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.exists() or dest.is_symlink():
+            dest.unlink()
+        if symlink:
+            os.symlink(src, dest)
+        else:
+            shutil.copy2(src, dest)
+        print(f"Installed llama-mcp-setup skill to {dest}")
+    return dests
+
+
 def _configure_client(harness: str) -> None:
     """Print zero-mutation MCP client JSON snippet, target config path, and official guide URL."""
     console = Console()
@@ -985,6 +1072,8 @@ def _run_tui_wizard() -> None:
             console.print(f"  {ln}")
     if Confirm.ask("Show MCP client setup snippet for a specific harness?", default=False):
         _configure_client("prompt")
+    if Confirm.ask("Install the llama-mcp-setup agent skill into detected harnesses?", default=False):
+        _install_skill("auto", dry_run=False)
 
 
     print("Manage, add, or remove models anytime with: llama-mcp-models")
@@ -1036,6 +1125,15 @@ def main() -> None:
     parser.add_argument("--register", action="store_true", help="Register workspace globally as active home.")
     parser.add_argument("--unregister", action="store_true", help="Clear the global workspace registration pointer.")
     parser.add_argument(
+        "--install-skill",
+        nargs="?",
+        const="auto",
+        default=None,
+        metavar="TARGET",
+        help="Install llama-mcp-setup SKILL.md (auto, claude, antigravity, gemini, cursor, workspace, or path).",
+    )
+    parser.add_argument("--skill-link", action="store_true", help="Symlink SKILL.md instead of copying.")
+    parser.add_argument(
         "--presets",
         nargs="+",
         metavar="PRESET",
@@ -1062,6 +1160,9 @@ def main() -> None:
         sys.exit(_run_doctor())
     if args.configure_client:
         _configure_client(args.configure_client)
+        return
+    if args.install_skill is not None:
+        _install_skill(args.install_skill, symlink=args.skill_link, dry_run=args.dry_run)
         return
     if args.verify_models:
         console = Console()
