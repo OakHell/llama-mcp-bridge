@@ -67,5 +67,9 @@
 
 ### `v0.6.0` — Unconstrained Hugging Face & Local GGUF Models (`llama-mcp-models`)
 - **Arbitrary HF Repo & Local File Support (`llama-mcp-models add`)**: Support `llama-mcp-models add <preset> --hf <owner>/<repo>[:<quant-or-filename>]` (resolving `.gguf` and optional `mmproj` files via the Hugging Face API with resumable `.part` downloads) and `--file <path/to/model.gguf>`, allowing users either to override a built-in specialist slot or define a new custom `[preset]` section in `models.ini`.
-- **Generic Baseline Warning**: Emit a clear CLI notice when adding an uncurated Hugging Face or local GGUF model explaining that a generic hardware-tier `models.ini` entry has been generated and manual tuning (`ctx-size`, KV cache quantisation, GPU layers) in `models.ini` is up to the user.
+- **Generic Baseline Warning & Client Restart Reminder**: Emit a clear CLI notice when adding an uncurated Hugging Face or local GGUF model explaining that a generic hardware-tier `models.ini` entry has been generated and manual tuning (`ctx-size`, KV cache quantisation, GPU layers) in `models.ini` is up to the user, and remind the user whenever `llama-mcp-models add` or `remove` modifies custom `[preset]` sections to restart active MCP clients (Claude Code, Cursor, Cline, Antigravity) so `tools/list` refreshes.
 - **Dynamic MCP Tool Routing**: Expose custom `models.ini` sections to MCP clients via a generic `ask_preset` tool or dynamically registered `ask_<preset>` tools at bridge startup.
+
+### `v0.7.0` — GGUF Binary Header Heuristics & Auto-Tuning
+- **Zero-Dependency GGUF Header Inspection**: Parse binary header metadata (`general.architecture`, `*.block_count`, `*.attention.head_count_kv`, `*.context_length`) from the first few kilobytes of downloaded or local `.gguf` files without loading model weights.
+- **KV-Cache & VRAM Auto-Sizing (`--tune-mode`)**: Compute exact KV-cache memory per token against detected hardware VRAM/RAM to estimate safe `n-gpu-layers` and `ctx-size` values for any model architecture, exposed via `--tune-mode conservative|approximate` on `llama-mcp-models add` (with an explicit heuristic-tuning disclaimer).

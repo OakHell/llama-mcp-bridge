@@ -100,7 +100,7 @@ Manage, add, or remove specialist presets anytime after installation without re-
 - **List Presets:** `llama-mcp-models list` displays all 9 presets, their `models.ini` status, tier GGUF filenames, disk presence, and sizes.
 - **Add Presets:** `llama-mcp-models add digest coder` (or `--add`) merges the requested presets into `models.ini` without duplicating existing `[section]` headers and downloads their GGUFs.
 - **Remove Presets Safely:** `llama-mcp-models remove vision` (or `--remove`) prompts for confirmation (`-y` / `--yes` skips the prompt; `--dry-run` previews changes), removes the preset sections from `models.ini`, and only deletes `.gguf` / `mmproj` files on disk if no remaining preset in `models.ini` references them.
-- **Custom Models (Upcoming `v0.6.0`):** Curated tier presets are provided out of the box; `v0.6.0` will add `--hf <owner>/<repo>[:<quant-or-filename>]` and `--file <path/to/model.gguf>` to `llama-mcp-models add` to bring any Hugging Face or local GGUF model with a generic baseline `models.ini` entry ready for user tuning.
+- **Custom Models (Upcoming `v0.6.0` / `v0.7.0`):** Curated tier presets are provided out of the box; `v0.6.0` adds `--hf <owner>/<repo>[:<quant-or-filename>]` and `--file <path/to/model.gguf>` to `llama-mcp-models add` with a generic baseline `models.ini` tuning notice and MCP client restart reminder (`tools/list`), and `v0.7.0` adds GGUF binary header KV-cache auto-sizing via `--tune-mode conservative|approximate`.
 
 ## Configuration (`LLAMA_MCP_HOME` & `bridge.ini`)
 
@@ -162,7 +162,7 @@ uv run ruff check .
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the full release history (`v0.1.0`–`v0.5.x`), including `llama-mcp-models`, selective presets, Windows/macOS cross-platform hardening, and upcoming `v0.6.0` custom Hugging Face (`--hf`) & local GGUF (`--file`) model support.
+See [ROADMAP.md](ROADMAP.md) for the full release history (`v0.1.0`–`v0.5.x`) and upcoming milestones: `v0.6.0` (custom `--hf` / local `--file` GGUFs, baseline tuning notice, and MCP client restart reminder) and `v0.7.0` (GGUF binary header KV-cache heuristics via `--tune-mode conservative|approximate`).
 
 ## License
 
