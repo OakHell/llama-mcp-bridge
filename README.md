@@ -1,14 +1,26 @@
 # Llama MCP Bridge
 
-A cross-platform Model Context Protocol (MCP) bridge connecting MCP clients to a local `llama-server` instance.
+A cross-platform Model Context Protocol (MCP) bridge connecting MCP clients to a local `llama-server` instance. It automatically profiles your GPU VRAM (or CPU fallback) and generates tuned `models.ini` presets—selecting optimal GGUF quantisations, KV-cache precision, and context windows for your exact memory constraints.
 
 ## Architecture & Features
 
+- **VRAM-Aware Auto-Tuning:** Profiles NVIDIA, AMD ROCm, Apple Silicon, Intel/Vulkan, or CPU fallback and generates `models.ini` with tier-matched GGUF quantisations, KV-cache precision (`q4_0`–`q8_0`), and context sizes.
 - **Specialist MCP Tools:** 9 dedicated tools (`ask_digest`, `ask_coder_fast`, `ask_coder`, `ask_coder_long`, `ask_vision`, `ask_vision_deep`, `ask_reasoner`, `ask_analyst`, `ask_generalist`) routed to tuned local GGUF presets.
 - **Output Hygiene Engine:** Strips internal reasoning/monologue tags while preserving fenced code blocks, LaTeX, and structured content.
 - **Gitignore-Aware File Discovery:** Respects `.gitignore` cascades, `!` negations, `include > ignore` precedence, binary skipping, and smallest-first context budgets.
 - **Lazy Process Supervision:** Automatically spawns `llama-server` on demand and polls `/health` before dispatching requests.
-- **Cross-Platform Hardware Profiling:** Detects NVIDIA, AMD ROCm, Apple Silicon, Intel/Vulkan, and CPU fallbacks across Linux, macOS, Windows, and FreeBSD, generating tuned `models.ini` presets.
+
+## Hardware & VRAM Tiers
+
+| Tier | Typical Hardware | KV Cache (`K`/`V`) | `coder` / `coder-long` Context | Parallelism |
+| :--- | :--- | :--- | :--- | :--- |
+| `6gb` | 6 GB GPUs / CPU fallback | `q4_0` / `q4_0` | 8K / 16K | 1 |
+| `8gb` | 8 GB GPUs (e.g. RTX 3070 `sm_86`) | `q8_0` / `q8_0` (`q4_0` long) | 16K / 32K | 1 |
+| `12gb` | 12 GB GPUs | `q8_0` / `q8_0` | 24K / 40K | 1 |
+| `16gb` | 16 GB GPUs / Apple Silicon | `q8_0` / `q8_0` | 32K / 64K | 2 |
+| `24gb+` | 24 GB+ GPUs / Apple Silicon | `q8_0` / `q8_0` | 64K / 128K | 4 |
+
+> **CPU-Only Notice:** When no supported GPU (`NVIDIA`, `AMD ROCm`, `Apple Metal`, `Intel/Vulkan`) is detected, the installer falls back to the lightweight `cpu` (`6gb`) preset tier in system RAM. At least **16 GB of system RAM** is recommended, and vision or 32K-context tools will have noticeably slower latency than `ask_digest` and `ask_coder_fast`.
 
 ## Quick Start (Guided Setup Wizard)
 

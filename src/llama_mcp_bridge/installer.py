@@ -65,6 +65,12 @@ def _check_hardware_prerequisites(profile: SystemProfile, mode: str) -> list[str
         and not shutil.which("xcode-select")
     ):
         missing.append("xcode-select (run: xcode-select --install)")
+    elif profile.gpu_vendor == "cpu":
+        print(
+            "NOTICE: No supported GPU detected; using lightweight 'cpu' (6gb) presets in system RAM. "
+            ">= 16 GB system RAM is recommended. Vision and long-context tools will be slower than "
+            "ask_digest and ask_coder_fast."
+        )
 
     if mode in ("source-hermetic", "source-system") and not shutil.which("cmake"):
         missing.append("cmake (install CMake 3.21+)")
