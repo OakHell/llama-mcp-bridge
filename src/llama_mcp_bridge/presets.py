@@ -232,6 +232,9 @@ def generate_models_ini(
     base_config["global"]["parallel"] = adj["parallel"]
     base_config["global"]["models-max"] = str(models_max)
     base_config["global"]["sleep-idle-seconds"] = str(idle_s)
+    if profile.gpu_vendor == "cpu":
+        base_config["global"]["n-gpu-layers"] = "0"
+        base_config["global"]["device"] = "none"
     base_config["vision-deep"]["no-mmproj-offload"] = adj["no_mmproj_offload"]
 
     for section, ctx_val in adj["ctx_overrides"].items():

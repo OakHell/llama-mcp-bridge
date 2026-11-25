@@ -126,3 +126,17 @@ def test_generate_models_ini_residency_profiles(
     parser.read_string(ini_str)
     assert parser.get("*", "sleep-idle-seconds") == expected_idle
     assert parser.get("*", "models-max") == expected_max
+
+
+def test_generate_models_ini_cpu_forces_pure_cpu_backend():
+    cpu_profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "ubuntu", "6gb")
+    cpu_parser = configparser.ConfigParser()
+    cpu_parser.read_string(generate_models_ini(cpu_profile, models_dir="/models"))
+    assert cpu_parser.get("*", "n-gpu-layers") == "0"
+    assert cpu_parser.get("*", "device") == "none"
+
+    gpu_profile = SystemProfile("linux", "x86_64", "nvidia", "RTX 3070", 8.0, "sm_86", "ubuntu", "8gb")
+    gpu_parser = configparser.ConfigParser()
+    gpu_parser.read_string(generate_models_ini(gpu_profile, models_dir="/models"))
+    assert gpu_parser.get("*", "n-gpu-layers") == "-1"
+    assert not gpu_parser.has_option("*", "device")
