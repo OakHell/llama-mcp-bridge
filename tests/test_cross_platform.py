@@ -711,3 +711,52 @@ def test_auto_install_prebuilt_falls_back_to_recent_releases(tmp_path: Path):
         _auto_install_llama_server(profile, "prebuilt", tmp_path, dry_run=False, yes=True)
 
     assert (tmp_path / "bin" / "llama-server").read_bytes() == b"binary"
+
+
+def test_uninstall_yes_removes_bins_and_service_preserves_models_and_ini(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import _uninstall_bridge
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    (tmp_path / "bridge.ini").write_text(f"[bridge]\nworkspace = {tmp_path}\n", encoding="utf-8")
+    (tmp_path / "models.ini").write_text("[*]\n", encoding="utf-8")
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "test.gguf").write_bytes(b"gguf")
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "llama-server").write_text("bin")
+    (tmp_path / "llama.cpp").mkdir()
+    (tmp_path / "llama.cpp" / "CMakeLists.txt").write_text("cmake")
+
+    existing_cron = "0 * * * * /usr/bin/keep\n@reboot nohup llama-server & # llama-mcp-bridge\n"
+    with (
+        patch("llama_mcp_bridge.installer.sys.platform", "linux"),
+        patch("llama_mcp_bridge.installer.shutil.which", return_value=None),
+        patch("llama_mcp_bridge.installer.LlamaSupervisor.stop"),
+        patch("llama_mcp_bridge.installer.subprocess.run") as mock_run,
+    ):
+        mock_run.side_effect = [MagicMock(returncode=0, stdout=existing_cron), MagicMock(returncode=0)]
+        _uninstall_bridge(dry_run=False, yes=True)
+
+    assert not (tmp_path / "bin").exists()
+    assert not (tmp_path / "llama.cpp").exists()
+    assert (tmp_path / "bridge.ini").exists()
+    assert (tmp_path / "models.ini").exists()
+    assert (tmp_path / "models" / "test.gguf").exists()
+    written_cron = mock_run.call_args_list[1].kwargs["input"]
+    assert "llama-mcp-bridge" not in written_cron
+    assert "/usr/bin/keep" in written_cron
+
+
+def test_uninstall_dry_run_leaves_everything_untouched(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import _uninstall_bridge
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "llama-server").write_text("bin")
+    (tmp_path / "bridge.ini").write_text(f"[bridge]\nworkspace = {tmp_path}\n", encoding="utf-8")
+
+    with patch("llama_mcp_bridge.installer.subprocess.run") as mock_run:
+        _uninstall_bridge(dry_run=True, yes=False)
+
+    mock_run.assert_not_called()
+    assert (tmp_path / "bin" / "llama-server").exists()
+    assert (tmp_path / "bridge.ini").exists()

@@ -83,6 +83,7 @@ uv run pytest -v
 | `--models-dir` | Custom directory for GGUF model files (defaults to `<workspace>/models`). |
 | `--ps` | Shows live server health, active residency, and loaded/idle presets (also `llama-mcp-ps`). |
 | `--doctor` | Runs an end-to-end diagnostic check of configs, `llama-server`, GGUF files, and `/health`. |
+| `--uninstall` | Removes managed `bin/`, build trees, and background service while preserving `.ini` configs and `.gguf` models (supports `--dry-run` and `--yes`). |
 | `--configure-client` | Prints ready-to-paste `mcpServers` JSON and official setup docs for your coding harness without modifying external files. |
 | `--tui` | Launches the interactive `rich` TUI setup wizard (also auto-launched on bare `llama-mcp-install` in a TTY). |
 | `--install-service` | Generates an OS-specific user service (`systemd` on Linux, `launchd` on macOS). |

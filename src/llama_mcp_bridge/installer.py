@@ -587,6 +587,93 @@ def _configure_client(harness: str) -> None:
     console.print(snippet, markup=False, soft_wrap=True)
 
 
+def _uninstall_bridge(dry_run: bool, yes: bool) -> None:
+    """Remove managed binaries, build trees, and OS services while preserving models & INIs."""
+    console = Console()
+    cfg = load_config()
+    workspace = Path(cfg.workspace)
+
+    summary = Table(title="llama-mcp-bridge Uninstall Plan")
+    summary.add_column("Action", style="bold")
+    summary.add_column("Targets")
+    summary.add_row(
+        "[red]Remove[/red]",
+        f"{workspace / 'bin'}, {workspace / 'llama.cpp'}, {workspace / 'build'}, OS background service",
+    )
+    summary.add_row(
+        "[green]Preserve[/green]",
+        f"{workspace / 'bridge.ini'}, {cfg.models_ini}, {cfg.models_dir}",
+    )
+    console.print(summary)
+
+    if dry_run:
+        print("[DRY-RUN] No files or services were modified.")
+        return
+
+    if not yes:
+        if not sys.stdin.isatty():
+            print("Non-interactive session without --yes; aborting uninstall.")
+            return
+        if not Confirm.ask("Proceed with uninstall?", default=False):
+            print("Uninstall cancelled.")
+            return
+
+    try:
+        LlamaSupervisor(cfg).stop()
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    if sys.platform == "win32":
+        subprocess.run(["schtasks", "/Delete", "/TN", "LlamaServer", "/F"], check=False)
+        bat_path = workspace / "start-llama-server.bat"
+        bat_path.unlink(missing_ok=True)
+    elif sys.platform == "darwin":
+        for plist_path in (
+            Path(get_config_home()) / "com.llama-server.plist",
+            Path.home() / "Library" / "LaunchAgents" / "com.llama-server.plist",
+        ):
+            if plist_path.exists():
+                subprocess.run(["launchctl", "unload", str(plist_path)], check=False)
+                plist_path.unlink(missing_ok=True)
+    elif sys.platform.startswith("linux"):
+        systemd_unit = Path.home() / ".config" / "systemd" / "user" / "llama-server.service"
+        if shutil.which("systemctl") and Path("/run/systemd/system").exists():
+            subprocess.run(["systemctl", "--user", "disable", "--now", "llama-server.service"], check=False)
+            systemd_unit.unlink(missing_ok=True)
+            subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+        else:
+            res = subprocess.run(["crontab", "-l"], capture_output=True, text=True, check=False)
+            if res.returncode == 0:
+                kept = [
+                    ln
+                    for ln in res.stdout.splitlines()
+                    if "# llama-mcp-bridge" not in ln and "llama-server" not in ln
+                ]
+                if kept:
+                    subprocess.run(["crontab", "-"], input="\n".join(kept) + "\n", text=True, check=False)
+                else:
+                    subprocess.run(["crontab", "-r"], check=False)
+    elif sys.platform.startswith(("freebsd", "openbsd", "netbsd")):
+        res = subprocess.run(["crontab", "-l"], capture_output=True, text=True, check=False)
+        if res.returncode == 0:
+            kept = [
+                ln
+                for ln in res.stdout.splitlines()
+                if "# llama-mcp-bridge" not in ln and "llama-server" not in ln
+            ]
+            if kept:
+                subprocess.run(["crontab", "-"], input="\n".join(kept) + "\n", text=True, check=False)
+            else:
+                subprocess.run(["crontab", "-r"], check=False)
+
+    for folder in (workspace / "bin", workspace / "llama.cpp", workspace / "build"):
+        if folder.exists():
+            shutil.rmtree(folder, ignore_errors=True)
+
+    print("Uninstall complete. Your models and .ini files were preserved.")
+    print("To remove the CLI package itself: uv tool uninstall llama-mcp-bridge")
+
+
 def _run_tui_wizard() -> None:
     """Interactive rich-powered setup wizard for llama-mcp-bridge."""
     console = Console()
@@ -706,6 +793,7 @@ def main() -> None:
     )
     parser.add_argument("--ps", action="store_true", help="Show live server and preset status.")
     parser.add_argument("--doctor", action="store_true", help="Run end-to-end diagnostic checklist.")
+    parser.add_argument("--uninstall", action="store_true", help="Remove binaries, build dirs, and service while preserving models and INIs.")
     parser.add_argument(
         "--configure-client",
         nargs="?",
@@ -717,6 +805,9 @@ def main() -> None:
     parser.add_argument("--models-dir", type=str, help="Path to models directory.")
 
     args = parser.parse_args()
+    if args.uninstall:
+        _uninstall_bridge(dry_run=args.dry_run, yes=args.yes)
+        return
     if args.ps:
         ps_main()
         return
