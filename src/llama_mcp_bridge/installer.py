@@ -13,6 +13,11 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from rich.console import Console
+from rich.panel import Panel
+from rich.prompt import Confirm, Prompt
+from rich.table import Table
+
 from llama_mcp_bridge.config import get_config_home, load_config
 from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
 from llama_mcp_bridge.presets import generate_models_ini
@@ -297,6 +302,77 @@ def _generate_service_file(dry_run: bool) -> None:
         return
 
 
+def _run_tui_wizard() -> None:
+    """Interactive rich-powered setup wizard for llama-mcp-bridge."""
+    console = Console()
+    profile = detect_hardware()
+    default_home = get_config_home()
+    cfg = load_config()
+    found_bin = _find_llama_server(default_home, cfg.llama_server_bin)
+
+    console.print(Panel.fit("[bold cyan]llama-mcp-bridge Setup Wizard[/bold cyan]", border_style="cyan"))
+
+    hw_table = Table(title="Step 1: Hardware & BYO Prerequisites")
+    hw_table.add_column("Property", style="bold")
+    hw_table.add_column("Detected Value")
+    hw_table.add_row("OS / Arch", f"{profile.os_name} / {profile.arch}")
+    hw_table.add_row("GPU / VRAM", f"{profile.gpu_vendor} ({profile.vram_gb} GB, tier={profile.tier})")
+    hw_table.add_row("llama-server", str(found_bin) if found_bin else "[yellow]Not detected[/yellow]")
+    console.print(hw_table)
+    _check_hardware_prerequisites(profile, "prebuilt")
+
+    ws_str = Prompt.ask("\nStep 2: Workspace root", default=str(default_home))
+    workspace = Path(ws_str).expanduser()
+    models_str = Prompt.ask("Models directory", default=str(workspace / "models"))
+    models_dir = Path(models_str).expanduser()
+
+    mode = "skip"
+    if not found_bin:
+        mode = Prompt.ask(
+            "\nStep 3: llama-server install mode",
+            choices=["prebuilt", "system-bin", "source-hermetic", "source-system", "skip"],
+            default="prebuilt",
+        )
+
+    install_svc = Confirm.ask("\nStep 4: Register background service?", default=False)
+
+    summary = Table(title="Step 5: Planned Configuration")
+    summary.add_column("Setting", style="bold")
+    summary.add_column("Value")
+    summary.add_row("Workspace", str(workspace))
+    summary.add_row("Models Dir", str(models_dir))
+    summary.add_row("llama-server", mode if not found_bin else str(found_bin))
+    summary.add_row("Install Service", "Yes" if install_svc else "No")
+    console.print(summary)
+
+    if not Confirm.ask("Proceed with installation?", default=True):
+        console.print("[yellow]Aborted.[/yellow]")
+        return
+
+    workspace.mkdir(parents=True, exist_ok=True)
+    ini_content = generate_models_ini(profile, models_dir=str(models_dir))
+    (workspace / "models.ini").write_text(ini_content, encoding="utf-8")
+
+    bridge_ini = workspace / "bridge.ini"
+    if not bridge_ini.exists():
+        bridge_ini.write_text(
+            f"[bridge]\nworkspace = {workspace}\nmodels_dir = {models_dir}\n",
+            encoding="utf-8",
+        )
+
+    if not found_bin and mode != "skip":
+        _auto_install_llama_server(profile, mode, workspace, dry_run=False, yes=True)
+
+    if install_svc:
+        _generate_service_file(dry_run=False)
+
+    mcp_snippet = json.dumps(
+        {"mcpServers": {"local-ai": {"command": "llama-mcp-bridge", "env": {"LLAMA_MCP_HOME": str(workspace)}}}},
+        indent=2,
+    )
+    console.print(Panel(mcp_snippet, title="Add to mcp_config.json", border_style="green"))
+
+
 def main() -> None:
     """Main entry point for the installer CLI."""
     parser = argparse.ArgumentParser(description="Install and configure llama-mcp-bridge.")
@@ -309,9 +385,13 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Print planned actions without executing.")
     parser.add_argument("--install-service", action="store_true", help="Generate service unit file.")
     parser.add_argument("-y", "--yes", action="store_true", help="Auto-confirm llama-server installation.")
+    parser.add_argument("--tui", action="store_true", help="Launch interactive rich TUI wizard.")
     parser.add_argument("--models-dir", type=str, help="Path to models directory.")
 
     args = parser.parse_args()
+    if args.tui or (len(sys.argv) == 1 and sys.stdin.isatty()):
+        _run_tui_wizard()
+        return
     home = get_config_home()
     cfg = load_config()
     models_dir = Path(args.models_dir) if args.models_dir else home / "models"

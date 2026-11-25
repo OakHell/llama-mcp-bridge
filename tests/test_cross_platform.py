@@ -271,3 +271,25 @@ def test_auto_install_prebuilt_yes_extracts_and_updates_ini(tmp_path: Path):
 
     assert (tmp_path / "bin" / "llama-server").exists()
     assert "llama_server_bin = bin/llama-server" in (tmp_path / "bridge.ini").read_text(encoding="utf-8")
+
+
+def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _run_tui_wizard
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "linux", "6gb")
+
+    with (
+        patch("llama_mcp_bridge.installer.detect_hardware", return_value=profile),
+        patch("llama_mcp_bridge.installer._find_llama_server", return_value=None),
+        patch(
+            "llama_mcp_bridge.installer.Prompt.ask",
+            side_effect=[str(tmp_path), str(tmp_path / "models"), "skip"],
+        ),
+        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=[False, True]),
+    ):
+        _run_tui_wizard()
+
+    assert (tmp_path / "models.ini").exists()
+    assert (tmp_path / "bridge.ini").exists()
