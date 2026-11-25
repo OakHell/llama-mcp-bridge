@@ -7,7 +7,7 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-from llama_mcp_bridge.config import get_config_home
+from llama_mcp_bridge.config import get_config_home, load_config
 from llama_mcp_bridge.hardware import detect_hardware
 from llama_mcp_bridge.presets import generate_models_ini
 
@@ -42,10 +42,22 @@ def _generate_service_file(dry_run: bool) -> None:
 
     home.mkdir(parents=True, exist_ok=True)
     if os_name == "Linux":
-        service_path = home / "llama-mcp-bridge.service"
+        cfg = load_config()
+        systemd_dir = Path.home() / ".config" / "systemd" / "user"
+        systemd_dir.mkdir(parents=True, exist_ok=True)
+        service_path = systemd_dir / "llama-server.service"
+        server_bin = cfg.llama_server_bin or "llama-server"
         service_path.write_text(
-            "[Unit]\nDescription=Llama MCP Bridge\n\n"
-            "[Service]\nExecStart=/usr/bin/env python3 -m llama_mcp_bridge\n",
+            "[Unit]\n"
+            "Description=llama.cpp Router Server for llama-mcp-bridge\n"
+            "After=network.target\n\n"
+            "[Service]\n"
+            f"WorkingDirectory={cfg.workspace}\n"
+            f"ExecStart={server_bin} --models-preset {cfg.models_ini} "
+            f"--host {cfg.host} --port {cfg.port}\n"
+            "Restart=on-failure\n\n"
+            "[Install]\n"
+            "WantedBy=default.target\n",
             encoding="utf-8",
         )
     elif os_name == "Darwin":
