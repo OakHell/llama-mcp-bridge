@@ -56,3 +56,50 @@ def test_macos_apple_silicon_sysctl():
     assert profile.gpu_vendor == "apple"
     assert profile.vram_gb == 24.0
     assert profile.tier == "24gb+"
+
+
+def test_supervisor_windows_popen_and_stop():
+    import subprocess
+    from llama_mcp_bridge.config import BridgeConfig
+    from llama_mcp_bridge.supervisor import LlamaSupervisor
+
+    sup = LlamaSupervisor(BridgeConfig(llama_server_bin="llama-server"))
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None
+
+    with (
+        patch("llama_mcp_bridge.supervisor.os.name", "nt"),
+        patch("llama_mcp_bridge.supervisor.sys.platform", "win32"),
+        patch("llama_mcp_bridge.supervisor.subprocess.Popen", return_value=mock_proc) as mock_popen,
+        patch.object(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, create=True),
+        patch.object(subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True),
+    ):
+        sup._start_server()
+        cmd = mock_popen.call_args.args[0]
+        assert cmd[0].endswith("llama-server.exe")
+        kwargs = mock_popen.call_args.kwargs
+        assert kwargs["creationflags"] == (0x00000200 | 0x08000000)
+        assert "start_new_session" not in kwargs
+
+        assert sup.stop() is True
+        mock_proc.terminate.assert_called_once()
+
+
+def test_supervisor_posix_popen():
+    from llama_mcp_bridge.config import BridgeConfig
+    from llama_mcp_bridge.supervisor import LlamaSupervisor
+
+    sup = LlamaSupervisor(BridgeConfig(llama_server_bin="llama-server"))
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None
+
+    with (
+        patch("llama_mcp_bridge.supervisor.os.name", "posix"),
+        patch("llama_mcp_bridge.supervisor.sys.platform", "linux"),
+        patch("llama_mcp_bridge.supervisor.subprocess.Popen", return_value=mock_proc) as mock_popen,
+    ):
+        sup._start_server()
+        cmd = mock_popen.call_args.args[0]
+        assert cmd[0] == "llama-server"
+        kwargs = mock_popen.call_args.kwargs
+        assert kwargs.get("start_new_session") is True or kwargs.get("preexec_fn") is not None

@@ -1,10 +1,3 @@
-"""
-Supervisor module for managing llama-server subprocess lifecycle.
-
-This module provides lazy auto-spawning of llama-server instances with
-health monitoring and graceful shutdown capabilities.
-"""
-
 import atexit
 import os
 import signal
@@ -104,12 +97,30 @@ class LlamaSupervisor:
             cmd = [self.config.binary]
             cmd.extend(self.config.extra_args)
 
+            # Resolve binary extension for Windows
+            if sys.platform == "win32" and not self.config.binary.endswith(".exe"):
+                self.config.binary += ".exe"
+
+            # Prepare Popen kwargs
+            kwargs = {
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.PIPE,
+                "env": {**os.environ, **self.config.env_vars},
+            }
+
+            if sys.platform == "win32":
+                # Windows specific process creation flags
+                kwargs["creationflags"] = (
+                    subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+                )
+                # preexec_fn is ignored on Windows
+            else:
+                # POSIX specific session creation
+                kwargs["preexec_fn"] = os.setsid
+
             self._process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env={**os.environ, **self.config.env_vars},
-                preexec_fn=os.setsid if sys.platform != "win32" else None,
+                **kwargs,
             )
             self._health_status.process_id = self._process.pid
             self._running = True
@@ -252,6 +263,12 @@ class LlamaSupervisor:
                     else:
                         self._process.kill()
                     self._process.wait()
+
+                # Close pipes on all platforms to prevent resource leaks
+                if self._process.stdout:
+                    self._process.stdout.close()
+                if self._process.stderr:
+                    self._process.stderr.close()
 
                 self._process = None
                 self._running = False
