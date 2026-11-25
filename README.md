@@ -79,6 +79,7 @@ uv run pytest -v
 | `--download-models` | Downloads curated GGUF starter-pack models for your detected tier (resumable `.part` downloads). |
 | `--verify-models` | Verifies Hugging Face URLs for `--tier` (or all tiers) and suggests live GGUF alternatives on 404. |
 | `--tier` | Target VRAM tier (`6gb`, `8gb`, `12gb`, `16gb`, `24gb+`) for `--verify-models`. |
+| `--models-dir` | Custom directory for GGUF model files (defaults to `<workspace>/models`). |
 | `--tui` | Launches the interactive `rich` TUI setup wizard (also auto-launched on bare `llama-mcp-install` in a TTY). |
 | `--install-service` | Generates an OS-specific user service (`systemd` on Linux, `launchd` on macOS). |
 
@@ -122,6 +123,7 @@ Relative paths in `bridge.ini` (`models_dir`, `models_ini`, `llama_server_bin`) 
 | `ask_reasoner` | Mathematical, algorithmic, and logical reasoning |
 | `ask_analyst` | Deep technical auditing and edge-case analysis |
 | `ask_generalist` | General technical writing and synthesis |
+| `get_bridge_status` | Read-only JSON health, active VRAM tier, and warm model residency check |
 
 ## Service Installation (`--install-service`)
 
