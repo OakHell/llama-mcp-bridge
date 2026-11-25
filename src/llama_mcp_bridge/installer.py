@@ -212,6 +212,21 @@ def _auto_install_llama_server(
             with urllib.request.urlopen(match["browser_download_url"], timeout=60) as dl:
                 archive_path.write_bytes(dl.read())
             _extract_archive(archive_path, bin_dir)
+            found_bin = next(bin_dir.rglob(exe_name), None)
+            if found_bin and found_bin.parent != bin_dir:
+                nested_dir = found_bin.parent
+                for item in list(nested_dir.iterdir()):
+                    dest = bin_dir / item.name
+                    if dest.exists() or dest.is_symlink():
+                        if dest.is_dir() and not dest.is_symlink():
+                            shutil.rmtree(dest)
+                        else:
+                            dest.unlink()
+                    if item.is_symlink():
+                        os.symlink(os.readlink(item), dest)
+                    else:
+                        shutil.move(str(item), str(dest))
+                shutil.rmtree(nested_dir, ignore_errors=True)
     else:
         backend_flags = {
             "nvidia": "-DGGML_CUDA=ON",
@@ -234,7 +249,9 @@ def _auto_install_llama_server(
                 shutil.copy2(built_bin, bin_dir / exe_name)
 
     target_bin = bin_dir / exe_name
-    if target_bin.exists() and sys.platform != "win32":
+    if not target_bin.is_file():
+        raise RuntimeError(f"Expected binary {target_bin} not found after installation.")
+    if sys.platform != "win32":
         os.chmod(target_bin, 0o755)
     _persist_server_bin(workspace, f"bin/{exe_name}")
     print(f"Installed llama-server to {target_bin}")

@@ -810,3 +810,60 @@ def test_supervisor_unmocked_check_health_with_bridge_config():
     assert status["healthy"] is False
     mock_get.assert_called_once()
     assert mock_get.call_args.kwargs["timeout"] == 2.0
+
+
+def test_auto_install_flattens_nested_dir_and_preserves_symlinks(tmp_path: Path):
+    import io
+    import json
+    import os
+    import tarfile
+
+    from llama_mcp_bridge.hardware import SystemProfile
+    from llama_mcp_bridge.installer import _auto_install_llama_server
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        bin_info = tarfile.TarInfo("llama-b12728/llama-server")
+        bin_bytes = b"#!/bin/sh\n"
+        bin_info.size = len(bin_bytes)
+        tf.addfile(bin_info, io.BytesIO(bin_bytes))
+
+        lib_info = tarfile.TarInfo("llama-b12728/libllama.so.1.0.0")
+        lib_bytes = b"so"
+        lib_info.size = len(lib_bytes)
+        tf.addfile(lib_info, io.BytesIO(lib_bytes))
+
+        sym_info = tarfile.TarInfo("llama-b12728/libllama.so")
+        sym_info.type = tarfile.SYMTYPE
+        sym_info.linkname = "libllama.so.1.0.0"
+        tf.addfile(sym_info)
+    tgz_bytes = buf.getvalue()
+
+    rel_json = json.dumps(
+        {
+            "assets": [
+                {
+                    "name": "llama-b12728-bin-ubuntu-x64.tar.gz",
+                    "browser_download_url": "https://example.com/b12728.tar.gz",
+                }
+            ]
+        }
+    ).encode("utf-8")
+
+    r1 = MagicMock()
+    r1.__enter__.return_value = r1
+    r1.read.return_value = rel_json
+
+    r2 = MagicMock()
+    r2.__enter__.return_value = r2
+    r2.read.return_value = tgz_bytes
+
+    profile = SystemProfile("linux", "x86_64", "cpu", "CPU", 0.0, "", "ubuntu", "6gb")
+    with patch("llama_mcp_bridge.installer.urllib.request.urlopen", side_effect=[r1, r2]):
+        _auto_install_llama_server(profile, "prebuilt", tmp_path, dry_run=False, yes=True)
+
+    target_bin = tmp_path / "bin" / "llama-server"
+    assert target_bin.is_file()
+    assert os.access(target_bin, os.X_OK)
+    assert not (tmp_path / "bin" / "llama-b12728").exists()
+    assert (tmp_path / "bin" / "libllama.so").is_symlink()

@@ -4,7 +4,7 @@ requires = ["hatchling"]
 
 [project]
 name = "llama-mcp-bridge"
-version = "0.3.2"
+version = "0.3.3"
 license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = ["fastmcp", "pathspec", "requests", "rich"]
