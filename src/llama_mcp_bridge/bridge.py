@@ -7,6 +7,7 @@
 # ///
 
 import base64
+import configparser
 import glob as glob_mod
 import json
 import mimetypes
@@ -414,6 +415,16 @@ def query_llama(
     json_schema: dict[str, Any] | None = None,
 ) -> str:
     config = load_config()
+    if config.models_ini:
+        ini_path = Path(config.models_ini)
+        if ini_path.is_file():
+            cp = configparser.ConfigParser()
+            try:
+                cp.read(ini_path, encoding="utf-8")
+                if model not in cp.sections():
+                    return f"Preset '{model}' is not configured in models.ini. Run: llama-mcp-models add {model}"
+            except configparser.Error:
+                pass
     supervisor = LlamaSupervisor(config)
     supervisor.ensure_running()
 

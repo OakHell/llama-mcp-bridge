@@ -60,13 +60,13 @@ def test_macos_apple_silicon_sysctl():
     assert profile.tier == "24gb+"
 
 
-def test_supervisor_windows_popen_and_stop():
+def test_supervisor_windows_popen_and_stop(tmp_path: Path):
     import subprocess
 
     from llama_mcp_bridge.config import BridgeConfig
     from llama_mcp_bridge.supervisor import LlamaSupervisor
 
-    sup = LlamaSupervisor(BridgeConfig(llama_server_bin="llama-server"))
+    sup = LlamaSupervisor(BridgeConfig(workspace=str(tmp_path), llama_server_bin="llama-server"))
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
 
@@ -75,40 +75,43 @@ def test_supervisor_windows_popen_and_stop():
         patch("shutil.which", return_value="C:\\bin\\llama-server.exe"),
         patch("llama_mcp_bridge.supervisor.subprocess.Popen", return_value=mock_proc) as mock_popen,
         patch.object(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, create=True),
-        patch.object(subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True),
+        patch.object(subprocess, "DETACHED_PROCESS", 0x00000008, create=True),
     ):
         assert sup._start_server() is True
         cmd = mock_popen.call_args.args[0]
         assert cmd[0].endswith("llama-server.exe")
         kwargs = mock_popen.call_args.kwargs
-        assert kwargs["creationflags"] == (0x00000200 | 0x08000000)
+        assert kwargs["creationflags"] == (0x00000200 | 0x00000008)
+        assert kwargs["stdin"] == subprocess.DEVNULL
         assert "start_new_session" not in kwargs
+        assert (tmp_path / "llama-server.log").exists()
 
         assert sup.stop() is True
         mock_proc.terminate.assert_called_once()
 
 
-def test_supervisor_posix_popen():
-    import os
+def test_supervisor_posix_popen(tmp_path: Path):
+    import subprocess
 
     from llama_mcp_bridge.config import BridgeConfig
     from llama_mcp_bridge.supervisor import LlamaSupervisor
 
-    sup = LlamaSupervisor(BridgeConfig(llama_server_bin="llama-server"))
+    sup = LlamaSupervisor(BridgeConfig(workspace=str(tmp_path), llama_server_bin="llama-server"))
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
 
     with (
         patch("llama_mcp_bridge.supervisor.sys.platform", "linux"),
         patch("shutil.which", return_value="/usr/bin/llama-server"),
-        patch.object(os, "setsid", MagicMock(), create=True),
         patch("llama_mcp_bridge.supervisor.subprocess.Popen", return_value=mock_proc) as mock_popen,
     ):
         assert sup._start_server() is True
         cmd = mock_popen.call_args.args[0]
         assert cmd[0] == "llama-server"
         kwargs = mock_popen.call_args.kwargs
-        assert kwargs.get("start_new_session") is True or kwargs.get("preexec_fn") is not None
+        assert kwargs.get("start_new_session") is True
+        assert kwargs["stdin"] == subprocess.DEVNULL
+        assert (tmp_path / "llama-server.log").exists()
 
 
 def test_config_home_posix_default_never_mnt_ai(monkeypatch):
@@ -187,8 +190,9 @@ def test_windows_service_bat_and_schtasks(monkeypatch, tmp_path: Path):
     bat_path = tmp_path / "start-llama-server.bat"
     assert bat_path.exists()
     assert "--models-preset" in bat_path.read_text(encoding="utf-8")
-    mock_run.assert_called_once()
-    assert mock_run.call_args.args[0][0] == "schtasks"
+    assert mock_run.call_count == 2
+    assert mock_run.call_args_list[0].args[0][:2] == ["schtasks", "/Create"]
+    assert mock_run.call_args_list[1].args[0][:2] == ["schtasks", "/Run"]
 
 
 def test_non_systemd_linux_and_bsd_crontab_dedup(monkeypatch, tmp_path: Path):
@@ -980,3 +984,44 @@ def test_select_presets_interactive_inline_live_cursor_and_size(capsys):
     assert "> [x]" in out
     assert "  [x]" in out
     assert "  [ ]" in out
+
+
+def test_linux_systemd_service_auto_activates(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import _generate_service_file
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    orig_exists = Path.exists
+
+    def fake_exists(self: Path) -> bool:
+        if str(self) == "/run/systemd/system":
+            return True
+        return orig_exists(self)
+
+    with (
+        patch("llama_mcp_bridge.installer.sys.platform", "linux"),
+        patch("llama_mcp_bridge.installer.shutil.which", return_value="/usr/bin/systemctl"),
+        patch.object(Path, "exists", fake_exists),
+        patch("llama_mcp_bridge.installer.subprocess.run") as mock_run,
+    ):
+        _generate_service_file(dry_run=False)
+
+    assert (tmp_path / ".config" / "systemd" / "user" / "llama-server.service").exists()
+    calls = [c.args[0] for c in mock_run.call_args_list]
+    assert ["systemctl", "--user", "daemon-reload"] in calls
+    assert ["systemctl", "--user", "enable", "--now", "llama-server.service"] in calls
+
+
+def test_ps_main_filters_configured_presets(capsys, monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import ps_main
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    (tmp_path / "models.ini").write_text("[*]\nmodels-max = 1\n\n[digest]\nmodel = d.gguf\n", encoding="utf-8")
+    (tmp_path / "bridge.ini").write_text(f"[bridge]\nmodels_ini = {tmp_path / 'models.ini'}\n", encoding="utf-8")
+
+    with patch("llama_mcp_bridge.supervisor.LlamaSupervisor._check_health", return_value=False):
+        ps_main()
+
+    out = capsys.readouterr().out
+    assert "digest" in out
+    assert "vision-deep" not in out

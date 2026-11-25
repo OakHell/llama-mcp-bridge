@@ -1,4 +1,5 @@
 import atexit
+import configparser
 import os
 import signal
 import subprocess
@@ -7,6 +8,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Self
 
 import requests
@@ -72,6 +74,7 @@ class LlamaSupervisor:
         self._atexit_registered = False
         self._stderr_tail: deque[str] = deque(maxlen=40)
         self._stderr_thread: threading.Thread | None = None
+        self._log_path: Path | None = None
 
     def _get_server_url(self) -> str:
         """Construct the server URL from configuration."""
@@ -101,30 +104,36 @@ class LlamaSupervisor:
             cmd = [binary_bin]
             cmd.extend(getattr(self.config, "extra_args", []))
 
+            from llama_mcp_bridge.config import get_config_home
+
+            workspace = Path(getattr(self.config, "workspace", "") or get_config_home())
+            workspace.mkdir(parents=True, exist_ok=True)
+            self._log_path = workspace / "llama-server.log"
+            log_fh = self._log_path.open("ab")
+
             # Prepare Popen kwargs
-            kwargs = {
-                "stdout": subprocess.PIPE,
-                "stderr": subprocess.PIPE,
+            kwargs: dict[str, Any] = {
+                "stdin": subprocess.DEVNULL,
+                "stdout": log_fh,
+                "stderr": subprocess.STDOUT,
                 "env": {**os.environ, **getattr(self.config, "env_vars", {})},
             }
 
             if sys.platform == "win32":
-                # Windows specific process creation flags
-                kwargs["creationflags"] = (
-                    subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-                )
-                # preexec_fn is ignored on Windows
+                detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+                kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | detached
             else:
-                # POSIX specific session creation
-                kwargs["preexec_fn"] = os.setsid
+                kwargs["start_new_session"] = True
 
-            self._process = subprocess.Popen(
-                cmd,
-                **kwargs,
-            )
+            try:
+                self._process = subprocess.Popen(
+                    cmd,
+                    **kwargs,
+                )
+            finally:
+                log_fh.close()
             self._health_status.process_id = self._process.pid
             self._running = True
-            self._start_stderr_reader()
             return True
         except FileNotFoundError:
             error_msg = f"Server binary not found: {binary_bin}"
@@ -156,7 +165,15 @@ class LlamaSupervisor:
 
     def get_stderr_tail(self) -> str:
         """Return recent stderr lines from the managed llama-server subprocess."""
-        return "\n".join(self._stderr_tail)
+        if self._stderr_tail:
+            return "\n".join(self._stderr_tail)
+        if self._log_path and self._log_path.is_file():
+            try:
+                lines = self._log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+                return "\n".join(lines[-40:])
+            except OSError:
+                pass
+        return ""
 
     def _check_health(self) -> bool:
         """
@@ -237,12 +254,29 @@ class LlamaSupervisor:
 
             return self._poll_until_healthy()
 
+    def _configured_presets(self) -> list[str]:
+        """Return presets configured in models.ini, falling back to all valid presets if missing."""
+        from llama_mcp_bridge.presets import _VALID_PRESETS
+
+        raw_ini = getattr(self.config, "models_ini", "")
+        if raw_ini:
+            ini_path = Path(raw_ini)
+            if ini_path.is_file():
+                cp = configparser.ConfigParser()
+                try:
+                    cp.read(ini_path, encoding="utf-8")
+                    return [sec for sec in cp.sections() if sec != "*"]
+                except configparser.Error:
+                    pass
+        return list(_VALID_PRESETS)
+
     def get_status(self) -> dict[str, Any]:
         """Return server health, hardware tier, and loaded/unloaded model status."""
         from llama_mcp_bridge.hardware import detect_hardware
 
         profile = detect_hardware()
         healthy = self._check_health()
+        configured = self._configured_presets()
         models: dict[str, str] = {}
         if healthy:
             try:
@@ -256,6 +290,7 @@ class LlamaSupervisor:
                             models[mid] = status_obj.get("value", "loaded") if isinstance(status_obj, dict) else "loaded"
             except (requests.exceptions.RequestException, ValueError, KeyError):
                 pass
+        filtered_models = {name: models.get(name, "idle") for name in configured} if models or configured else models
         return {
             "healthy": healthy,
             "server_url": self._get_server_url(),
@@ -263,7 +298,8 @@ class LlamaSupervisor:
             "tier": profile.tier,
             "vram_gb": profile.vram_gb,
             "gpu_vendor": profile.gpu_vendor,
-            "models": models,
+            "configured_presets": configured,
+            "models": filtered_models,
         }
 
     def is_healthy(self) -> bool:

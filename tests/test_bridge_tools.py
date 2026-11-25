@@ -132,3 +132,19 @@ def test_oom_fallback_on_oom_retries_digest(mock_post, mock_ensure, monkeypatch,
     assert "Fallback answer" in out
     assert mock_post.call_count == 2
     assert mock_post.call_args_list[1].kwargs["json"]["model"] == "digest"
+
+
+@patch("llama_mcp_bridge.bridge.LlamaSupervisor.ensure_running")
+@patch("llama_mcp_bridge.bridge.requests.post")
+def test_unconfigured_preset_returns_add_guidance(mock_post, mock_ensure, monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    (tmp_path / "models.ini").write_text("[*]\nmodels-max = 1\n\n[digest]\nmodel = d.gguf\n", encoding="utf-8")
+    (tmp_path / "bridge.ini").write_text(f"[bridge]\nmodels_ini = {tmp_path / 'models.ini'}\n", encoding="utf-8")
+
+    img = tmp_path / "a.png"
+    img.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    out = ask_vision("Describe", image_paths=[str(img)])
+    assert out == "Preset 'vision' is not configured in models.ini. Run: llama-mcp-models add vision"
+    mock_ensure.assert_not_called()
+    mock_post.assert_not_called()

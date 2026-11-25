@@ -26,6 +26,7 @@ class BridgeConfig:
     auto_spawn: bool = True
     residency: str = "moderate"
     fallback_on_oom: bool = False
+    startup_timeout_seconds: float = 30.0
     health_timeout_s: int = 30
     request_timeout_s: int = 90
     max_tokens: int = 4096

@@ -300,6 +300,7 @@ def _generate_service_file(dry_run: bool) -> None:
         workspace.mkdir(parents=True, exist_ok=True)
         bat_path.write_text(bat_content, encoding="utf-8")
         subprocess.run(schtasks_cmd, check=False)
+        subprocess.run(["schtasks", "/Run", "/TN", "LlamaServer"], check=False)
         return
 
     if sys.platform == "darwin":
@@ -335,6 +336,11 @@ def _generate_service_file(dry_run: bool) -> None:
             return
         home.mkdir(parents=True, exist_ok=True)
         plist_path.write_text(plist_xml, encoding="utf-8")
+        try:
+            subprocess.run(["launchctl", "unload", str(plist_path)], check=False)
+            subprocess.run(["launchctl", "load", "-w", str(plist_path)], check=False)
+        except FileNotFoundError:
+            pass
         return
 
     if sys.platform.startswith("linux"):
@@ -358,6 +364,14 @@ def _generate_service_file(dry_run: bool) -> None:
                 return
             systemd_dir.mkdir(parents=True, exist_ok=True)
             service_path.write_text(unit, encoding="utf-8")
+            try:
+                subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
+                subprocess.run(["systemctl", "--user", "enable", "--now", "llama-server.service"], check=True)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                print(
+                    "Note: Could not auto-start systemd user service (no active user D-Bus session). "
+                    "Start manually with: systemctl --user enable --now llama-server.service"
+                )
             return
 
         _install_reboot_crontab(server_bin, cfg.models_ini, cfg.host, cfg.port, dry_run)
@@ -504,7 +518,8 @@ def ps_main() -> None:
     table.add_column("Preset", style="bold")
     table.add_column("Status")
     loaded_map = status.get("models", {})
-    for name in _PRESET_NAMES:
+    preset_list = status.get("configured_presets") or list(loaded_map.keys()) or list(_PRESET_NAMES)
+    for name in preset_list:
         st = loaded_map.get(name, "idle")
         badge = "[green]LOADED[/green]" if st == "loaded" else "[dim]IDLE[/dim]"
         table.add_row(name, badge)
