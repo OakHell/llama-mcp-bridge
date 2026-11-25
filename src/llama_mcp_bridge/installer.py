@@ -3,6 +3,8 @@
 import argparse
 import os
 import platform
+import tarfile
+import zipfile
 from pathlib import Path
 
 from llama_mcp_bridge.hardware import detect_hardware
@@ -15,6 +17,25 @@ def _get_config_home() -> Path:
     if env_home:
         return Path(env_home).expanduser()
     return Path.home() / ".config" / "llama-mcp-bridge"
+
+
+def _macos_release_asset(arch: str) -> str:
+    """Map macOS architecture to llama.cpp release asset suffix."""
+    return "macos-arm64" if arch.lower() in ("arm64", "aarch64") else "macos-x64"
+
+
+def _extract_archive(archive_path: Path, dest_dir: Path) -> None:
+    """Extract .zip (Windows) or .tar.gz/.tar.xz (POSIX) archives."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    name = archive_path.name.lower()
+    if name.endswith(".zip"):
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            zf.extractall(dest_dir)
+    elif name.endswith((".tar.gz", ".tgz", ".tar.xz")):
+        with tarfile.open(archive_path, "r:*") as tf:
+            tf.extractall(dest_dir)
+    else:
+        raise ValueError(f"Unsupported archive format: {archive_path}")
 
 
 def _generate_service_file(dry_run: bool) -> None:
@@ -37,8 +58,24 @@ def _generate_service_file(dry_run: bool) -> None:
     elif os_name == "Darwin":
         plist_path = home / "com.llama-mcp-bridge.plist"
         plist_path.write_text(
-            "<plist><dict><key>Label</key>"
-            "<string>com.llama-mcp-bridge</string></dict></plist>\n",
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+            '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+            '<plist version="1.0">\n'
+            "<dict>\n"
+            "  <key>Label</key>\n"
+            "  <string>com.llama-mcp-bridge</string>\n"
+            "  <key>ProgramArguments</key>\n"
+            "  <array>\n"
+            "    <string>/usr/bin/env</string>\n"
+            "    <string>python3</string>\n"
+            "    <string>-m</string>\n"
+            "    <string>llama_mcp_bridge</string>\n"
+            "  </array>\n"
+            "  <key>RunAtLoad</key>\n"
+            "  <true/>\n"
+            "</dict>\n"
+            "</plist>\n",
             encoding="utf-8",
         )
     else:

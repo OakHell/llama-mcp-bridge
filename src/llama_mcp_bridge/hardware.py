@@ -60,6 +60,8 @@ def _probe_nvidia() -> tuple[str, float, str] | None:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -130,6 +132,35 @@ def _probe_intel_or_vulkan() -> tuple[str, float] | None:
     return None
 
 
+def _probe_windows_wmi() -> tuple[str, str, float] | None:
+    """Probes non-NVIDIA GPUs on Windows via PowerShell Get-CimInstance."""
+    try:
+        result = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_VideoController | Select-Object -First 1 Name,AdapterRAM | ConvertTo-Csv -NoTypeInformation",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            lines = [ln.strip() for ln in result.stdout.strip().splitlines() if ln.strip()]
+            if len(lines) >= 2:
+                parts = [p.strip().strip('"') for p in lines[1].split(",")]
+                name = parts[0]
+                ram_bytes = float(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0.0
+                vendor = "amd" if "amd" in name.lower() or "radeon" in name.lower() else "intel"
+                return vendor, name, ram_bytes / (1024**3)
+    except Exception:
+        pass
+    return None
+
+
 def detect_hardware() -> SystemProfile:
     """Main entry point to detect system hardware profile."""
     os_name = platform.system().lower()
@@ -151,6 +182,10 @@ def detect_hardware() -> SystemProfile:
         if nvidia:
             gpu_vendor = "nvidia"
             gpu_name, vram_gb, compute_cap = nvidia
+        elif os_name == "windows":
+            wmi = _probe_windows_wmi()
+            if wmi:
+                gpu_vendor, gpu_name, vram_gb = wmi
         elif os_name == "linux":
             amd = _probe_amd()
             if amd:
