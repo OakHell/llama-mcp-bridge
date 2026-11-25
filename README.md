@@ -2,6 +2,15 @@
 
 A cross-platform Model Context Protocol (MCP) bridge connecting MCP clients to a local `llama-server` instance.
 
+## Quick Start (Guided Setup Wizard)
+
+Install the package globally and run the interactive setup wizard—it detects your GPU/VRAM, checks BYO drivers/SDKs, optionally downloads or builds `llama-server`, configures background startup, and outputs your ready-to-paste `mcp_config.json`:
+
+```bash
+uv tool install git+[https://github.com/OakHell/llama-mcp-bridge](https://github.com/OakHell/llama-mcp-bridge)
+uv tool update-shell
+llama-mcp-install
+
 ## Architecture & Features
 
 - **Specialist MCP Tools:** 9 dedicated tools (`ask_digest`, `ask_coder_fast`, `ask_coder`, `ask_coder_long`, `ask_vision`, `ask_vision_deep`, `ask_reasoner`, `ask_analyst`, `ask_generalist`) routed to tuned local GGUF presets.
@@ -9,6 +18,16 @@ A cross-platform Model Context Protocol (MCP) bridge connecting MCP clients to a
 - **Gitignore-Aware File Discovery:** Respects `.gitignore` cascades, `!` negations, `include > ignore` precedence, binary skipping, and smallest-first context budgets.
 - **Lazy Process Supervision:** Automatically spawns `llama-server` on demand and polls `/health` before dispatching requests.
 - **Cross-Platform Hardware Profiling:** Detects NVIDIA, AMD ROCm, Apple Silicon, Intel/Vulkan, and CPU fallbacks across Linux, macOS, Windows, and FreeBSD, generating tuned `models.ini` presets.
+
+## Quick Start (Guided Setup Wizard)
+
+```bash
+uv tool install git+https://github.com/OakHell/llama-mcp-bridge
+uv tool update-shell
+llama-mcp-install
+```
+
+Running `llama-mcp-install` with no flags automatically launches the interactive `rich` TUI wizard (or pass `--tui` explicitly) to detect your hardware, audit BYO GPU prerequisites, optionally install `llama-server`, configure background services, and print the ready-to-copy `mcp_config.json` snippet and required GGUF model filenames.
 
 ## Installation & Execution
 
@@ -44,7 +63,7 @@ uv run pytest -v
 
 > **Zero-install dry run:** You can also run `uvx --from git+https://github.com/OakHell/llama-mcp-bridge llama-mcp-install --dry-run` without installing anything.
 
-### Installer Modes (`--mode`)
+### Non-Interactive / Scripted CLI Flags
 
 | Flag | Description |
 | :--- | :--- |
@@ -102,7 +121,7 @@ Relative paths in `bridge.ini` (`models_dir`, `models_ini`, `llama_server_bin`) 
 
 - **Linux (`systemd`):** Writes `~/.config/systemd/user/llama-server.service` when `systemd` is active (`systemctl --user enable --now llama-server.service`).
 - **Linux (non-`systemd` / Alpine / Void / Gentoo):** Installs a deduplicated `@reboot` user crontab entry (`# llama-mcp-bridge`) and prints an OpenRC reference snippet.
-- **macOS (`launchd`):** Writes `com.llama-mcp-bridge.plist` in `LLAMA_MCP_HOME`.
+- **macOS (`launchd`):** Writes `com.llama-server.plist` in `LLAMA_MCP_HOME`.
 - **Windows:** Writes `<workspace>/start-llama-server.bat` and registers a `LlamaServer` logon task via `schtasks`.
 - **BSD (FreeBSD / OpenBSD / NetBSD):** Installs a deduplicated `@reboot` user crontab entry (`# llama-mcp-bridge`) and prints a FreeBSD `rc.d` (`daemon(8)`) template.
 
