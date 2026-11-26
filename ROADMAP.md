@@ -4,11 +4,6 @@ For shipped milestones (`v0.1.0`–`v0.8.1`), see [SHIPPED.md](SHIPPED.md). For 
 
 ## Upcoming Milestones
 
-### `v0.9.0` — Security, Cross-Platform Parity & README Architecture
-- **Security & Correctness:** `S1`–`S5`
-- **User-Affecting Bugs & Cleanup:** `B1`–`B4`, `B6`–`B12`, `N12`
-- **Documentation & Testing:** `D1`–`D19`, `D22`–`D24`, `T1`–`T11`, `T15`, `T20`
-
 ### `v0.10.0` — Module Split, Edge-Case Hardening & CLI Polish
 - **Structural Refactoring (First):** `C16`–`C17` (split `installer.py` and `bridge.py` into focused submodules)
 - **Edge-Case Hardening & Polish:** `M1`–`M20`, `N1`–`N11`

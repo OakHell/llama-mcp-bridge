@@ -199,6 +199,10 @@ def test_non_systemd_linux_and_bsd_crontab_dedup(monkeypatch, tmp_path: Path):
     from llama_mcp_bridge.installer import _generate_service_file
 
     monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    srv_bin = tmp_path / "bin" / "llama-server"
+    srv_bin.parent.mkdir(parents=True)
+    srv_bin.write_bytes(b"#!/bin/sh\n")
+    (tmp_path / "bridge.ini").write_text(f"[bridge]\nllama_server_bin = {srv_bin}\n", encoding="utf-8")
     existing_cron = "0 * * * * /usr/bin/backup\n@reboot old # llama-mcp-bridge\n"
 
     for plat in ("linux", "freebsd14"):
