@@ -1505,3 +1505,27 @@ def test_install_service_preserves_existing_models_ini(monkeypatch, tmp_path: Pa
         installer_main()
 
     assert models_ini.read_text(encoding="utf-8") == original
+
+
+def test_uninstall_removes_local_ai_from_harness_configs(monkeypatch, tmp_path: Path):
+    import json
+
+    from llama_mcp_bridge.installer import _uninstall_bridge
+
+    home = tmp_path / "home"
+    antigravity_cfg = home / ".gemini" / "config" / "mcp_config.json"
+    antigravity_cfg.parent.mkdir(parents=True)
+    antigravity_cfg.write_text(
+        json.dumps({"mcpServers": {"local-ai": {"command": "llama-mcp-bridge"}, "other": {"command": "x"}}}),
+        encoding="utf-8",
+    )
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(ws))
+    with patch("llama_mcp_bridge.installer.Path.home", return_value=home):
+        _uninstall_bridge(dry_run=False, yes=True)
+
+    data = json.loads(antigravity_cfg.read_text(encoding="utf-8"))
+    assert "local-ai" not in data["mcpServers"]
+    assert data["mcpServers"]["other"] == {"command": "x"}

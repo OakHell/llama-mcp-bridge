@@ -923,6 +923,39 @@ def _configure_client(harness: str, apply: bool = False, dry_run: bool = False) 
             print(f"Updated MCP config: {cfg_file}")
 
 
+def _cleanup_harness_mcp_configs(dry_run: bool = False) -> list[Path]:
+    """Remove 'local-ai' from known harness mcpServers JSON configs while preserving other entries."""
+    home = Path.home()
+    candidates = [
+        home / ".gemini" / "config" / "mcp_config.json",
+        home / ".gemini" / "antigravity" / "mcp_config.json",
+        home / ".claude.json",
+        home / ".cursor" / "mcp.json",
+    ]
+    updated: list[Path] = []
+    for cfg_file in candidates:
+        if not cfg_file.is_file():
+            continue
+        try:
+            data = json.loads(cfg_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        servers = data.get("mcpServers")
+        if not isinstance(servers, dict) or "local-ai" not in servers:
+            continue
+        if dry_run:
+            print(f"[DRY-RUN] Would remove 'local-ai' from {cfg_file}")
+            updated.append(cfg_file)
+            continue
+        del servers["local-ai"]
+        cfg_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        print(f"Removed 'local-ai' from {cfg_file}")
+        updated.append(cfg_file)
+    return updated
+
+
 def _uninstall_bridge(dry_run: bool, yes: bool) -> None:
     """Remove managed binaries, build trees, and OS services while preserving models & INIs."""
     console = Console()
@@ -943,6 +976,7 @@ def _uninstall_bridge(dry_run: bool, yes: bool) -> None:
     console.print(summary)
 
     if dry_run:
+        _cleanup_harness_mcp_configs(dry_run=True)
         print("[DRY-RUN] No files or services were modified.")
         return
 
@@ -1022,6 +1056,7 @@ def _uninstall_bridge(dry_run: bool, yes: bool) -> None:
             shutil.rmtree(folder, ignore_errors=True)
 
     unregister_global_workspace(only_if_matches=workspace)
+    _cleanup_harness_mcp_configs(dry_run=False)
     print("Uninstall complete. Your models and .ini files were preserved.")
     print("To remove the CLI package itself: uv tool uninstall llama-mcp-bridge")
 

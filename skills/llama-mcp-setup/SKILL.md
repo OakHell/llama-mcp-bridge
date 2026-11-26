@@ -19,7 +19,7 @@ Non-login shells often omit `~/.local/bin` (POSIX) or `%USERPROFILE%\.local\bin`
 - **Windows (PowerShell):**
   ```powershell
   $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
-  Get-Command llama-mcp-install -ErrorAction SilentlyContinue || uv tool install git+https://github.com/OakHell/llama-mcp-bridge
+  if (-not (Get-Command llama-mcp-install -ErrorAction SilentlyContinue)) { uv tool install git+https://github.com/OakHell/llama-mcp-bridge }
   ```
 - Run `llama-mcp-install --doctor` to check whether a workspace is already configured and healthy.
 
