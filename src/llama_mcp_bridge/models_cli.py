@@ -295,6 +295,12 @@ def main() -> None:
         default="conservative",
         help="Heuristic auto-tuning mode for custom GGUF models.",
     )
+    parser.add_argument(
+        "--tool-name",
+        type=str,
+        metavar="NAME",
+        help="Custom MCP tool/section name (e.g. qwen_coder -> [qwen_coder] / ask_qwen_coder).",
+    )
     parser.add_argument("-y", "--yes", action="store_true", help="Confirm destructive removals.")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files.")
     args = parser.parse_args()
@@ -311,10 +317,17 @@ def main() -> None:
         _print_models_list(profile, models_ini, models_dir)
         return
     if args.hf or args.file:
-        if not add_targets or len(add_targets) != 1:
-            parser.error("--hf and --file require exactly one preset name: llama-mcp-models add <preset> ...")
+        if args.tool_name:
+            norm_tool = args.tool_name.strip().replace("-", "_")
+            norm_tool = norm_tool.removeprefix("ask_")
+            target_preset = norm_tool
+        elif add_targets and len(add_targets) == 1:
+            target_preset = add_targets[0]
+        else:
+            parser.error("--hf and --file require a single preset name or --tool-name.")
+            return
         _handle_custom_add(
-            add_targets[0],
+            target_preset,
             args.hf,
             args.file,
             args.mmproj,

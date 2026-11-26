@@ -1262,37 +1262,36 @@ def test_windows_msvcrt_two_byte_arrow_keys():
 
 
 def test_resolve_bridge_command_and_mcp_snippet(capsys, monkeypatch, tmp_path: Path):
-    import sys as _sys
+    import sys as _sys  # noqa: F401
 
     from llama_mcp_bridge.installer import _configure_client, _resolve_bridge_command
 
     monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
     monkeypatch.setenv("PATH", "/usr/bin")
 
-    with (
-        patch("llama_mcp_bridge.installer.sys.platform", "linux"),
-        patch("llama_mcp_bridge.installer.shutil.which", return_value="/usr/bin/llama-mcp-bridge"),
-    ):
-        assert _resolve_bridge_command() == "llama-mcp-bridge"
+    fake_bin = tmp_path / "venv" / "bin" / "llama-mcp-bridge"
+    fake_bin.parent.mkdir(parents=True)
+    fake_bin.write_text("#!/bin/sh\n", encoding="utf-8")
 
     with (
         patch("llama_mcp_bridge.installer.sys.platform", "linux"),
-        patch("llama_mcp_bridge.installer.shutil.which", return_value=None),
+        patch("llama_mcp_bridge.installer.sys.executable", str(fake_bin.parent / "python")),
     ):
-        resolved = _resolve_bridge_command()
-        assert resolved.endswith("llama-mcp-bridge")
-        assert str(Path(_sys.executable).parent) in resolved or str(Path(_sys.prefix) / "bin") in resolved
+        assert _resolve_bridge_command() == str(fake_bin)
 
     win_exe = r"C:\Users\First Last\.local\bin\llama-mcp-bridge.exe"
     with (
         patch("llama_mcp_bridge.installer.sys.platform", "win32"),
+        patch("llama_mcp_bridge.installer.sys.executable", str(tmp_path / "no_venv" / "python.exe")),
+        patch("llama_mcp_bridge.installer.Path.home", return_value=tmp_path / "no_home"),
         patch("llama_mcp_bridge.installer.shutil.which", return_value=win_exe),
     ):
         assert _resolve_bridge_command() == win_exe
-        _configure_client("cursor")
+        _configure_client("antigravity")
 
     out = capsys.readouterr().out
     assert "llama-mcp-bridge.exe" in out
+    assert "~/.gemini/config/mcp_config.json" in out
 
 
 def test_auto_install_source_hermetic_scrubs_env_and_static_flags(monkeypatch, tmp_path: Path):
@@ -1441,3 +1440,68 @@ def test_resolve_hf_gguf_repo_and_custom_add(capsys, monkeypatch, tmp_path: Path
     cp.read(models_ini, encoding="utf-8")
     assert cp.has_section("my_custom")
     assert cp.get("my_custom", "model") == str(models_dir / "custom-model.gguf")
+
+
+def test_configure_client_apply_merges_without_clobbering(monkeypatch, tmp_path: Path):
+    import json
+
+    from llama_mcp_bridge.installer import _configure_client
+
+    home = tmp_path / "home"
+    antigravity_cfg = home / ".gemini" / "config" / "mcp_config.json"
+    antigravity_cfg.parent.mkdir(parents=True)
+    antigravity_cfg.write_text(json.dumps({"mcpServers": {"other-tool": {"command": "other"}}}), encoding="utf-8")
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path / "ws"))
+    with (
+        patch("llama_mcp_bridge.installer.Path.home", return_value=home),
+        patch("llama_mcp_bridge.installer._resolve_bridge_command", return_value="/abs/bin/llama-mcp-bridge"),
+    ):
+        _configure_client("antigravity", apply=True)
+
+    merged = json.loads(antigravity_cfg.read_text(encoding="utf-8"))
+    assert merged["mcpServers"]["other-tool"] == {"command": "other"}
+    assert merged["mcpServers"]["local-ai"]["command"] == "/abs/bin/llama-mcp-bridge"
+
+
+def test_standby_status_in_ps_and_doctor(capsys, monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import _run_doctor, ps_main
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    (tmp_path / "bridge.ini").write_text("[bridge]\nauto_spawn = true\n", encoding="utf-8")
+    (tmp_path / "models.ini").write_text("[*]\nmodels-max = 1\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin" / "llama-server"
+    fake_bin.parent.mkdir()
+    fake_bin.write_bytes(b"#!/bin/sh\n")
+    fake_bin.chmod(0o755)
+
+    with (
+        patch("llama_mcp_bridge.installer._find_llama_server", return_value=str(fake_bin)),
+        patch("llama_mcp_bridge.supervisor.LlamaSupervisor._check_health", return_value=False),
+    ):
+        ps_main()
+        ps_out = capsys.readouterr().out
+        assert "STANDBY" in ps_out
+
+        rc = _run_doctor()
+        doc_out = capsys.readouterr().out
+        assert rc == 0
+        assert "Standby" in doc_out
+
+
+def test_install_service_preserves_existing_models_ini(monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import main as installer_main
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    models_ini = tmp_path / "models.ini"
+    original = "[*]\nmodels-max = 1\n\n[digest]\nmodel = /tmp/d.gguf\n"
+    models_ini.write_text(original, encoding="utf-8")
+
+    with (
+        patch("llama_mcp_bridge.installer._find_llama_server", return_value="/usr/bin/llama-server"),
+        patch("llama_mcp_bridge.installer._generate_service_file"),
+        patch("sys.argv", ["llama-mcp-install", "--install-service"]),
+    ):
+        installer_main()
+
+    assert models_ini.read_text(encoding="utf-8") == original

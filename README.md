@@ -96,7 +96,7 @@ uv run pytest -v
 | `--ps` | Shows live server health, active residency, and loaded/idle presets (also `llama-mcp-ps`). |
 | `--doctor` | Runs an end-to-end diagnostic check of configs, `llama-server`, GGUF files, and `/health`. |
 | `--uninstall` | Removes managed `bin/`, build trees, and background service while preserving `.ini` configs and `.gguf` models (supports `--dry-run` and `--yes`). |
-| `--configure-client` | Prints ready-to-paste `mcpServers` JSON and official setup docs for your coding harness without modifying external files. |
+| `--configure-client` | Prints ready-to-paste `mcpServers` JSON and official setup docs for your coding harness (pass `--apply` to merge-write `"local-ai"` directly into the harness config). |
 | `--tui` | Launches the interactive `rich` TUI setup wizard (also auto-launched on bare `llama-mcp-install` in a TTY). |
 | `--install-service` | Generates an OS-specific user service (`systemd` on Linux, `launchd` on macOS). |
 
@@ -174,7 +174,7 @@ uv run ruff check .
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for all shipped releases (`v0.1.0`–`v0.8.0`), including custom `--hf` / `--file` GGUFs, GGUF binary header KV-cache auto-tuning (`--tune-mode`), dynamic `ask_preset` routing, global `--register` workspace enrolment, and the bundled `llama-mcp-setup` agent skill (`--install-skill`).
+See [ROADMAP.md](ROADMAP.md) for all shipped releases (`v0.1.0`–`v0.8.1`), including dynamic `models.ini`-driven tool filtering, `--configure-client --apply`, `STANDBY` auto-spawn reporting, custom `--hf` / `--file` GGUFs, GGUF binary header KV-cache auto-tuning (`--tune-mode`), global `--register` workspace enrolment, and the bundled `llama-mcp-setup` agent skill (`--install-skill`).
 
 ## License
 

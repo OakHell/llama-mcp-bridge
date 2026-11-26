@@ -172,3 +172,28 @@ def test_ask_preset_and_dynamic_custom_tool_registration(mock_post, mock_ensure,
     out = ask_preset(preset="custom-qwen", prompt="Hello")
     assert out == "Custom OK"
     assert mock_post.call_args.kwargs["json"]["model"] == "custom-qwen"
+
+
+def test_configured_tools_filtering_omits_unconfigured_builtins(monkeypatch, tmp_path: Path):
+    import asyncio
+
+    from fastmcp import FastMCP
+
+    from llama_mcp_bridge.bridge import _register_configured_tools, ask_preset, get_bridge_status
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    (tmp_path / "models.ini").write_text(
+        "[*]\nmodels-max = 1\n\n[digest]\nmodel = d.gguf\n\n[qwen_coder]\nmodel = q.gguf\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "bridge.ini").write_text(f"[bridge]\nmodels_ini = {tmp_path / 'models.ini'}\n", encoding="utf-8")
+
+    srv = FastMCP("test-filtered")
+    srv.tool()(get_bridge_status)
+    srv.tool()(ask_preset)
+    _register_configured_tools(target_mcp=srv)
+
+    tool_names = {t.name for t in asyncio.run(srv.list_tools())}
+    assert {"get_bridge_status", "ask_preset", "ask_digest", "ask_qwen_coder"} <= tool_names
+    assert "ask_vision" not in tool_names
+    assert "ask_coder_long" not in tool_names
