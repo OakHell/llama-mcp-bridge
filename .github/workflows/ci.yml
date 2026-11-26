@@ -32,3 +32,23 @@ jobs:
 
       - name: Run llama-mcp-install dry-run
         run: uv run llama-mcp-install --dry-run
+
+  freebsd:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run tests in FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y python311 py311-pip curl
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+          run: |
+            export PATH="$HOME/.local/bin:$PATH"
+            uv sync --dev
+            uv run pytest -v
+            uv run llama-mcp-install --dry-run
+            uv run llama-mcp-install --install-service --dry-run

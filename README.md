@@ -187,7 +187,7 @@ All presets use `reasoning-format = deepseek` with a shared `reasoning-budget-me
 
 ## Development
 
-Requires **Python `>=3.11`**. GitHub Actions CI runs on a 3-OS matrix (`ubuntu-latest`, `macos-latest`, `windows-latest`) executing `uv sync --dev`, `uv run ruff check .`, `uv run pytest -v`, and `uv run llama-mcp-install --dry-run`.
+Requires **Python `>=3.11`**. GitHub Actions CI runs on `ubuntu-latest`, `macos-latest`, `windows-latest`, and a FreeBSD 14 VM (`vmactions/freebsd-vm`) executing `uv sync --dev`, `uv run ruff check .`, `uv run pytest -v`, and `uv run llama-mcp-install --dry-run`.
 
 ```bash
 uv run pytest -v
