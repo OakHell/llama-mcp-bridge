@@ -27,7 +27,6 @@ from llama_mcp_bridge.config import load_config
 from llama_mcp_bridge.hardware import detect_hardware
 from llama_mcp_bridge.hygiene import clean_mcp_output
 from llama_mcp_bridge.paths import resolve_workspace
-from llama_mcp_bridge.presets import _VALID_PRESETS
 from llama_mcp_bridge.supervisor import LlamaSupervisor, classify_inference_error
 
 mcp = FastMCP("Local Model Specialist")
@@ -532,7 +531,6 @@ def query_llama(
         return diag
 
 
-@mcp.tool()
 def ask_digest(
     prompt: str,
     file_paths: list[str] | None = None,
@@ -575,7 +573,6 @@ def ask_digest(
     return clean_mcp_output(raw)
 
 
-@mcp.tool()
 def ask_coder_fast(
     prompt: str,
     file_paths: list[str] | None = None,
@@ -612,7 +609,6 @@ def ask_coder_fast(
     return clean_mcp_output(raw)
 
 
-@mcp.tool()
 def ask_coder(
     prompt: str,
     file_paths: list[str] | None = None,
@@ -656,7 +652,6 @@ def get_bridge_status() -> str:
     return json.dumps(supervisor.get_status(), indent=2)
 
 
-@mcp.tool()
 def ask_coder_long(
     prompt: str,
     file_paths: list[str] | None = None,
@@ -716,7 +711,6 @@ def _encode_image_to_data_uri(image_path: str) -> str:
     return f"data:{mime_type};base64,{encoded}"
 
 
-@mcp.tool()
 def ask_vision(prompt: str, image_paths: list[str] | str) -> str:
     """Use Qwen 3.5 4B Vision for rapid UI inspection, screenshot reading, and OCR."""
     paths = [image_paths] if isinstance(image_paths, str) else list(image_paths)
@@ -732,7 +726,6 @@ def ask_vision(prompt: str, image_paths: list[str] | str) -> str:
     return clean_mcp_output(raw)
 
 
-@mcp.tool()
 def ask_vision_deep(prompt: str, image_paths: list[str] | str) -> str:
     """Use Qwen 3.5 9B Vision for complex visual reasoning, diagrams, and dense UI analysis."""
     paths = [image_paths] if isinstance(image_paths, str) else list(image_paths)
@@ -748,7 +741,6 @@ def ask_vision_deep(prompt: str, image_paths: list[str] | str) -> str:
     return clean_mcp_output(raw)
 
 
-@mcp.tool()
 def ask_reasoner(
     prompt: str,
     file_paths: list[str] | None = None,
@@ -778,7 +770,6 @@ def ask_reasoner(
     return clean_mcp_output(raw)
 
 
-@mcp.tool()
 def ask_analyst(
     prompt: str,
     file_paths: list[str] | None = None,
@@ -808,7 +799,6 @@ def ask_analyst(
     return clean_mcp_output(raw)
 
 
-@mcp.tool()
 def ask_generalist(
     prompt: str,
     file_paths: list[str] | None = None,
@@ -842,12 +832,15 @@ def ask_generalist(
 def ask_preset(
     preset: str,
     prompt: str,
+    system_prompt: str = "You are a helpful local specialist assistant.",
     file_paths: list[str] | None = None,
+    image_path: str | None = None,
     image_paths: list[str] | None = None,
     ignore: list[str] | None = None,
     include: list[str] | None = None,
     use_gitignore: bool = True,
     gitignore_paths: list[str] | None = None,
+    max_tokens: int = 4096,
     json_schema: dict[str, Any] | None = None,
 ) -> str:
     """Invoke any configured or custom [preset] section from models.ini by name."""
@@ -863,16 +856,16 @@ def ask_preset(
         return err
 
     image_uris: list[str] | None = None
-    if image_paths:
-        image_uris, img_err = _collect_image_uris(image_paths=image_paths)
+    if image_path or image_paths:
+        image_uris, img_err = _collect_image_uris(image_path=image_path, image_paths=image_paths)
         if img_err:
             return img_err
 
     raw = query_llama(
         model=preset,
-        system_prompt="You are a helpful local specialist assistant.",
+        system_prompt=system_prompt,
         prompt=full_prompt,
-        max_tokens=4096,
+        max_tokens=max_tokens,
         timeout=180,
         image_data_uris=image_uris,
         json_schema=json_schema,
@@ -880,21 +873,55 @@ def ask_preset(
     return clean_mcp_output(raw)
 
 
-def _register_custom_preset_tools() -> list[str]:
-    """Dynamically register ask_<preset> MCP tools for custom sections in models.ini."""
+_BUILTIN_TOOL_MAP = {
+    "digest": ask_digest,
+    "coder-fast": ask_coder_fast,
+    "coder": ask_coder,
+    "coder-long": ask_coder_long,
+    "vision": ask_vision,
+    "vision-deep": ask_vision_deep,
+    "reasoner": ask_reasoner,
+    "analyst": ask_analyst,
+    "generalist": ask_generalist,
+}
+
+
+def _register_configured_tools(target_mcp: FastMCP | None = None) -> list[str]:
+    """Register only configured built-in and custom [preset] MCP tools from models.ini."""
+    srv = target_mcp or mcp
+    components = getattr(getattr(srv, "local_provider", None), "_components", None)
+    if isinstance(components, dict):
+        for key in [
+            k
+            for k in list(components.keys())
+            if k.startswith("tool:") and k not in ("tool:get_bridge_status@", "tool:ask_preset@")
+            and not k.startswith(("tool:get_bridge_status", "tool:ask_preset"))
+        ]:
+            components.pop(key, None)
+
     cfg = load_config()
     ini_path = Path(cfg.models_ini)
     if not ini_path.is_file():
-        return []
+        registered: list[str] = []
+        for fn in _BUILTIN_TOOL_MAP.values():
+            srv.tool()(fn)
+            registered.append(fn.__name__)
+        return registered
+
     cp = configparser.ConfigParser()
     try:
         cp.read(ini_path, encoding="utf-8")
     except configparser.Error:
         return []
 
-    registered: list[str] = []
+    registered = []
     for section in cp.sections():
-        if section == "*" or section in _VALID_PRESETS:
+        if section == "*":
+            continue
+        if section in _BUILTIN_TOOL_MAP:
+            fn = _BUILTIN_TOOL_MAP[section]
+            srv.tool()(fn)
+            registered.append(fn.__name__)
             continue
         safe_suffix = re.sub(r"[^a-zA-Z0-9_]", "_", section).strip("_")
         if not safe_suffix:
@@ -904,31 +931,42 @@ def _register_custom_preset_tools() -> list[str]:
         def _make_tool(preset_name: str, fn_name: str) -> None:
             def _dynamic_tool(
                 prompt: str,
+                system_prompt: str = "You are a helpful local specialist assistant.",
                 file_paths: list[str] | None = None,
+                image_path: str | None = None,
                 image_paths: list[str] | None = None,
                 ignore: list[str] | None = None,
                 include: list[str] | None = None,
                 use_gitignore: bool = True,
                 gitignore_paths: list[str] | None = None,
+                max_tokens: int = 4096,
             ) -> str:
                 return ask_preset(
                     preset=preset_name,
                     prompt=prompt,
+                    system_prompt=system_prompt,
                     file_paths=file_paths,
+                    image_path=image_path,
                     image_paths=image_paths,
                     ignore=ignore,
                     include=include,
                     use_gitignore=use_gitignore,
                     gitignore_paths=gitignore_paths,
+                    max_tokens=max_tokens,
                 )
 
             _dynamic_tool.__name__ = fn_name
             _dynamic_tool.__doc__ = f"Invoke custom models.ini preset '{preset_name}'."
-            mcp.tool()(_dynamic_tool)
+            srv.tool()(_dynamic_tool)
 
         _make_tool(section, tool_name)
         registered.append(tool_name)
     return registered
+
+
+def _register_custom_preset_tools() -> list[str]:
+    """Backward-compatible wrapper returning configured tools registered from models.ini."""
+    return _register_configured_tools()
 
 
 def main() -> None:
@@ -938,7 +976,7 @@ def main() -> None:
     args, _ = parser.parse_known_args()
     if args.workspace_dir:
         os.environ["LLAMA_MCP_HOME"] = str(resolve_workspace(args.workspace_dir))
-    _register_custom_preset_tools()
+    _register_configured_tools()
     mcp.run()
 
 

@@ -624,7 +624,7 @@ _HARNESS_GUIDES: dict[str, tuple[str, str]] = {
     "cline": ("VS Code globalStorage cline_mcp_settings.json", "https://docs.cline.bot/mcp-servers/configuring-mcp-servers"),
     "windsurf": ("~/.codeium/windsurf/mcp_config.json", "https://docs.windsurf.com/windsurf/mcp"),
     "zed": ("~/.config/zed/settings.json", "https://zed.dev/docs/assistant/model-context-protocol"),
-    "antigravity": ("~/.gemini/antigravity/mcp_config.json", "https://antigravity.google/docs/mcp"),
+    "antigravity": ("~/.gemini/config/mcp_config.json", "https://antigravity.google/docs/mcp"),
     "other": ("Your MCP client's mcpServers JSON config", "https://modelcontextprotocol.io/quickstart/user"),
 }
 
@@ -634,7 +634,12 @@ def ps_main() -> None:
     console = Console()
     cfg = load_config()
     status = LlamaSupervisor(cfg).get_status()
-    state_label = "[green]ONLINE[/green]" if status["healthy"] else "[red]OFFLINE[/red]"
+    if status["healthy"]:
+        state_label = "[green]ONLINE[/green]"
+    elif cfg.auto_spawn:
+        state_label = "[cyan]STANDBY (auto-spawn)[/cyan]"
+    else:
+        state_label = "[red]OFFLINE[/red]"
     console.print(
         f"Server: [bold]{cfg.host}:{cfg.port}[/bold] | State: {state_label} | "
         f"Residency: [cyan]{status.get('residency', cfg.residency)}[/cyan] | "
@@ -712,29 +717,30 @@ def _run_doctor() -> int:
     status = LlamaSupervisor(cfg).get_status()
     if status["healthy"]:
         table.add_row("Server /health", "[green]PASS[/green]", f"Reachable at {status['server_url']}")
+    elif cfg.auto_spawn:
+        table.add_row("Server /health", "[green]PASS[/green]", "Standby — will auto-spawn on first tool call")
     else:
-        table.add_row("Server /health", "[yellow]WARN[/yellow]", "Stopped (lazy startup will spawn on demand)")
+        table.add_row("Server /health", "[yellow]WARN[/yellow]", "Stopped (auto_spawn=false)")
 
     console.print(table)
     return 1 if failed else 0
 
 
 def _resolve_bridge_command() -> str:
-    """Resolve llama-mcp-bridge command cleanly on POSIX PATH or to full executable path."""
-    which = shutil.which("llama-mcp-bridge")
-    if which:
-        if sys.platform == "win32":
-            return which
-        path_dirs = {os.path.normpath(p) for p in os.environ.get("PATH", "").split(os.pathsep) if p}
-        if os.path.normpath(str(Path(which).parent)) in path_dirs:
-            return "llama-mcp-bridge"
-        return which
+    """Resolve llama-mcp-bridge to an absolute executable path on both POSIX and Windows."""
     exe_name = "llama-mcp-bridge.exe" if sys.platform == "win32" else "llama-mcp-bridge"
-    candidate = Path(sys.executable).parent / exe_name
-    if candidate.exists():
-        return str(candidate)
-    scripts_dir = Path(sys.prefix) / ("Scripts" if sys.platform == "win32" else "bin")
-    return str(scripts_dir / exe_name)
+    candidates = [
+        Path(sys.executable).parent / exe_name,
+        Path.home() / ".local" / "bin" / exe_name,
+    ]
+    for cand in candidates:
+        if cand.is_file():
+            return str(cand)
+
+    which = shutil.which("llama-mcp-bridge") or (shutil.which(exe_name) if sys.platform == "win32" else None)
+    if which:
+        return which
+    return "llama-mcp-bridge"
 
 
 def _build_mcp_snippet(workspace: Path) -> str:
@@ -835,8 +841,38 @@ def _install_skill(
     return dests
 
 
-def _configure_client(harness: str) -> None:
-    """Print zero-mutation MCP client JSON snippet, target config path, and official guide URL."""
+def _resolve_harness_config_paths(harness: str, home_dir: Path | None = None) -> list[Path]:
+    """Resolve target JSON config file path(s) for a coding harness across POSIX and Windows."""
+    home = home_dir or Path.home()
+    if harness == "claude-code":
+        return [home / ".claude.json"]
+    if harness == "cursor":
+        return [home / ".cursor" / "mcp.json"]
+    if harness == "windsurf":
+        return [home / ".codeium" / "windsurf" / "mcp_config.json"]
+    if harness == "zed":
+        if sys.platform == "win32":
+            appdata = Path(os.environ.get("APPDATA") or str(home / "AppData" / "Roaming"))
+            return [appdata / "Zed" / "settings.json"]
+        return [home / ".config" / "zed" / "settings.json"]
+    if harness == "antigravity":
+        paths = [home / ".gemini" / "config" / "mcp_config.json"]
+        if (home / ".gemini" / "antigravity").exists():
+            paths.append(home / ".gemini" / "antigravity" / "mcp_config.json")
+        return paths
+    if harness == "cline":
+        if sys.platform == "win32":
+            base = Path(os.environ.get("APPDATA") or str(home / "AppData" / "Roaming")) / "Code"
+        elif sys.platform == "darwin":
+            base = home / "Library" / "Application Support" / "Code"
+        else:
+            base = home / ".config" / "Code"
+        return [base / "User" / "globalStorage" / "saoudrizwan.claude-dev" / "settings" / "cline_mcp_settings.json"]
+    return []
+
+
+def _configure_client(harness: str, apply: bool = False, dry_run: bool = False) -> None:
+    """Print (or optionally merge-write via --apply) MCP client JSON snippet and official guide URL."""
     console = Console()
     if harness == "prompt":
         harness = Prompt.ask(
@@ -846,6 +882,8 @@ def _configure_client(harness: str) -> None:
         )
     cfg = load_config()
     target_path, doc_url = _HARNESS_GUIDES.get(harness, _HARNESS_GUIDES["other"])
+    if harness == "zed" and sys.platform == "win32":
+        target_path = r"%APPDATA%\Zed\settings.json"
     snippet = _build_mcp_snippet(Path(cfg.workspace))
     console.print(
         Panel(
@@ -856,6 +894,33 @@ def _configure_client(harness: str) -> None:
         )
     )
     console.print(snippet, markup=False, soft_wrap=True)
+
+    if apply:
+        targets = _resolve_harness_config_paths(harness)
+        if not targets:
+            print(f"No automatic config file path known for harness '{harness}'; paste the JSON above manually.")
+            return
+        entry = json.loads(snippet)["mcpServers"]["local-ai"]
+        for cfg_file in targets:
+            if dry_run:
+                print(f"[DRY-RUN] Would merge 'local-ai' into {cfg_file}")
+                continue
+            existing: dict[str, Any] = {}
+            if cfg_file.is_file():
+                try:
+                    existing = json.loads(cfg_file.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    existing = {}
+            if not isinstance(existing, dict):
+                existing = {}
+            servers = existing.get("mcpServers")
+            if not isinstance(servers, dict):
+                servers = {}
+                existing["mcpServers"] = servers
+            servers["local-ai"] = entry
+            cfg_file.parent.mkdir(parents=True, exist_ok=True)
+            cfg_file.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
+            print(f"Updated MCP config: {cfg_file}")
 
 
 def _uninstall_bridge(dry_run: bool, yes: bool) -> None:
@@ -1119,6 +1184,8 @@ def main() -> None:
         choices=["prompt", "claude-code", "cursor", "cline", "windsurf", "zed", "antigravity", "other"],
         help="Print ready-to-paste MCP client JSON and official guide URL.",
     )
+    parser.add_argument("--apply", action="store_true", help="Merge 'local-ai' into the target harness config for --configure-client.")
+    parser.add_argument("--force", action="store_true", help="Overwrite existing models.ini when re-running installer.")
     parser.add_argument("--tui", action="store_true", help="Launch interactive rich TUI wizard.")
     parser.add_argument("--models-dir", type=str, help="Path to models directory.")
     parser.add_argument("--dir", "--home", dest="workspace_dir", type=str, help="Explicit workspace directory.")
@@ -1159,7 +1226,7 @@ def main() -> None:
     if args.doctor:
         sys.exit(_run_doctor())
     if args.configure_client:
-        _configure_client(args.configure_client)
+        _configure_client(args.configure_client, apply=args.apply, dry_run=args.dry_run)
         return
     if args.install_skill is not None:
         _install_skill(args.install_skill, symlink=args.skill_link, dry_run=args.dry_run)
@@ -1231,7 +1298,18 @@ def main() -> None:
     if args.register:
         ptr = register_global_workspace(home)
         print(f"Registered global workspace pointer at {ptr} -> {home}")
-    (home / "models.ini").write_text(ini_content, encoding="utf-8")
+    models_ini_path = home / "models.ini"
+    preserve_existing = (
+        models_ini_path.exists()
+        and args.install_service
+        and args.presets is None
+        and not args.force
+    )
+    if preserve_existing:
+        print(f"Preserved existing {models_ini_path}")
+    else:
+        models_ini_path.write_text(ini_content, encoding="utf-8")
+        print(f"Wrote {models_ini_path}")
     bridge_ini = home / "bridge.ini"
     if not bridge_ini.exists():
         bridge_ini.write_text(
@@ -1239,7 +1317,6 @@ def main() -> None:
             f"models_ini = {home / 'models.ini'}\nresidency = {args.residency}\n",
             encoding="utf-8",
         )
-    print(f"Wrote {home / 'models.ini'}")
     print("Manage, add, or remove models anytime with: llama-mcp-models")
 
 
