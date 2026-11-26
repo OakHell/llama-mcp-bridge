@@ -639,6 +639,14 @@ def test_run_doctor_passes_and_fails_on_missing_gguf(monkeypatch, tmp_path: Path
 
     with (
         patch("llama_mcp_bridge.installer._find_llama_server", return_value=fake_bin),
+        patch(
+            "llama_mcp_bridge.installer.subprocess.run",
+            side_effect=lambda cmd, **kw: MagicMock(
+                returncode=0 if "--version" in cmd else 1,
+                stdout="version: 0\n" if "--version" in cmd else "",
+                stderr="",
+            ),
+        ),
         patch("llama_mcp_bridge.installer.LlamaSupervisor.get_status", return_value={"healthy": False, "server_url": "http://127.0.0.1:8080"}),
     ):
         assert _run_doctor() == 1
@@ -963,6 +971,14 @@ def test_run_doctor_passes_with_only_selected_presets_on_disk(tmp_path: Path, mo
     health_resp.status_code = 200
     with (
         patch("llama_mcp_bridge.installer._find_llama_server", return_value=str(llama_bin)),
+        patch(
+            "llama_mcp_bridge.installer.subprocess.run",
+            side_effect=lambda cmd, **kw: MagicMock(
+                returncode=0 if "--version" in cmd else 1,
+                stdout="version: 0\n" if "--version" in cmd else "",
+                stderr="",
+            ),
+        ),
         patch("requests.get", return_value=health_resp),
     ):
         _run_doctor()
@@ -1481,6 +1497,14 @@ def test_standby_status_in_ps_and_doctor(capsys, monkeypatch, tmp_path: Path):
 
     with (
         patch("llama_mcp_bridge.installer._find_llama_server", return_value=str(fake_bin)),
+        patch(
+            "llama_mcp_bridge.installer.subprocess.run",
+            side_effect=lambda cmd, **kw: MagicMock(
+                returncode=0 if "--version" in cmd else 1,
+                stdout="version: 0\n" if "--version" in cmd else "",
+                stderr="",
+            ),
+        ),
         patch("llama_mcp_bridge.supervisor.LlamaSupervisor._check_health", return_value=False),
     ):
         ps_main()

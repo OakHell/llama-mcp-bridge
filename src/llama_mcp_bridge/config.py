@@ -151,7 +151,7 @@ def load_config(explicit_dir: Path | str | None = None) -> BridgeConfig:
     )
     if config.llama_server_bin:
         bin_path = str(resolve_path(config.llama_server_bin, workspace))
-        if (sys.platform == "win32" or os.name == "nt") and not bin_path.lower().endswith(".exe"):
+        if sys.platform == "win32" and not bin_path.lower().endswith(".exe"):
             bin_path = f"{bin_path}.exe"
         config.llama_server_bin = bin_path
 

@@ -179,6 +179,14 @@ def test_t20_m10_run_doctor_auto_spawn_false_and_version_check(capsys, monkeypat
 
     with (
         patch("llama_mcp_bridge.installer._find_llama_server", return_value=str(fake_bin)),
+        patch(
+            "llama_mcp_bridge.installer.subprocess.run",
+            side_effect=lambda cmd, **kw: MagicMock(
+                returncode=0 if "--version" in cmd else 1,
+                stdout="version: 0\n" if "--version" in cmd else "",
+                stderr="",
+            ),
+        ),
         patch("llama_mcp_bridge.supervisor.LlamaSupervisor._check_health", return_value=False),
     ):
         rc = _run_doctor()
@@ -186,6 +194,13 @@ def test_t20_m10_run_doctor_auto_spawn_false_and_version_check(capsys, monkeypat
     assert rc == 0
     assert "WARN" in out
     assert "Standby" not in out
+
+    with (
+        patch("llama_mcp_bridge.installer._find_llama_server", return_value=str(fake_bin)),
+        patch("llama_mcp_bridge.installer.subprocess.run", side_effect=OSError("bad exe")),
+        patch("llama_mcp_bridge.supervisor.LlamaSupervisor._check_health", return_value=False),
+    ):
+        assert _run_doctor() == 1
 
 
 def test_s5_crontab_rejects_relative_or_missing_binary(tmp_path: Path):
