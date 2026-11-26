@@ -662,6 +662,14 @@ def test_run_doctor_passes_and_fails_on_missing_gguf(monkeypatch, tmp_path: Path
 
     with (
         patch("llama_mcp_bridge.installer._find_llama_server", return_value=fake_bin),
+        patch(
+            "llama_mcp_bridge.installer.subprocess.run",
+            side_effect=lambda cmd, **kw: MagicMock(
+                returncode=0 if "--version" in cmd else 1,
+                stdout="version: 0\n" if "--version" in cmd else "",
+                stderr="",
+            ),
+        ),
         patch("llama_mcp_bridge.installer.LlamaSupervisor.get_status", return_value={"healthy": True, "server_url": "http://127.0.0.1:8080"}),
     ):
         assert _run_doctor() == 0
