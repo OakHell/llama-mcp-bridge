@@ -389,7 +389,7 @@ def probe_model_metadata(url: str, timeout: float = 5.0) -> tuple[bool, int | No
                     else None
                 )
                 return True, size_bytes, sha256
-    except (urllib.error.URLError, urllib.error.HTTPError, ValueError):
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError):
         return False, None, None
     return False, None, None
 

@@ -37,14 +37,29 @@ def _detect_distro_family() -> str:
     sys_name = platform.system().lower()
     if sys_name != "linux":
         return sys_name
-    release = platform.release().lower()
-    if "ubuntu" in release:
+    os_info: dict[str, str] = {}
+    if hasattr(platform, "freedesktop_os_release"):
+        try:
+            os_info = platform.freedesktop_os_release()
+        except OSError:
+            os_info = {}
+    if not os_info:
+        try:
+            with open("/etc/os-release", encoding="utf-8") as fh:
+                for line in fh:
+                    if "=" in line:
+                        k, v = line.strip().split("=", 1)
+                        os_info[k] = v.strip().strip('"')
+        except OSError:
+            pass
+    combined = f"{os_info.get('ID', '')} {os_info.get('ID_LIKE', '')}".lower()
+    if "ubuntu" in combined:
         return "ubuntu"
-    if "debian" in release:
+    if "debian" in combined:
         return "debian"
-    if any(tag in release for tag in ("centos", "rocky", "almalinux", "el")):
+    if any(tag in combined for tag in ("centos", "rocky", "almalinux", "rhel", "fedora")):
         return "rhel"
-    if "arch" in release:
+    if "arch" in combined:
         return "arch"
     return "linux"
 
@@ -133,15 +148,20 @@ def _probe_intel_or_vulkan() -> tuple[str, float] | None:
 
 
 def _probe_windows_wmi() -> tuple[str, str, float] | None:
-    """Probes non-NVIDIA GPUs on Windows via PowerShell Get-CimInstance."""
+    """Probes non-NVIDIA GPUs on Windows via 64-bit registry qwMemorySize with WMI AdapterRAM fallback."""
+    ps_script = (
+        "$reg = Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}\\000*' "
+        "-Name 'DriverDesc','HardwareInformation.qwMemorySize' -ErrorAction SilentlyContinue | "
+        "Where-Object { $_.'HardwareInformation.qwMemorySize' -gt 0 } | Select-Object -First 1; "
+        "if ($reg) { Write-Output \"$($reg.DriverDesc),$($reg.'HardwareInformation.qwMemorySize')\" } "
+        "else { "
+        "$wmi = Get-CimInstance Win32_VideoController | Select-Object -First 1 Name,AdapterRAM; "
+        "if ($wmi) { Write-Output \"$($wmi.Name),$($wmi.AdapterRAM)\" } "
+        "}"
+    )
     try:
         result = subprocess.run(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                "Get-CimInstance Win32_VideoController | Select-Object -First 1 Name,AdapterRAM | ConvertTo-Csv -NoTypeInformation",
-            ],
+            ["powershell", "-NoProfile", "-Command", ps_script],
             check=False,
             capture_output=True,
             text=True,
@@ -151,12 +171,13 @@ def _probe_windows_wmi() -> tuple[str, str, float] | None:
         )
         if result.returncode == 0 and result.stdout.strip():
             lines = [ln.strip() for ln in result.stdout.strip().splitlines() if ln.strip()]
-            if len(lines) >= 2:
-                parts = [p.strip().strip('"') for p in lines[1].split(",")]
-                name = parts[0]
-                ram_bytes = float(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0.0
-                vendor = "amd" if "amd" in name.lower() or "radeon" in name.lower() else "intel"
-                return vendor, name, ram_bytes / (1024**3)
+            # Support both single-line "Name,Bytes" and legacy 2-line CSV output
+            data_line = lines[-1]
+            parts = [p.strip().strip('"') for p in data_line.split(",")]
+            name = parts[0]
+            ram_bytes = float(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0.0
+            vendor = "amd" if "amd" in name.lower() or "radeon" in name.lower() else "intel"
+            return vendor, name, ram_bytes / (1024**3)
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
 
@@ -177,7 +198,7 @@ def detect_hardware() -> SystemProfile:
         if apple:
             gpu_vendor = "apple"
             gpu_name, vram_gb = apple
-    elif os_name in ("linux", "windows"):
+    elif os_name in ("linux", "windows") or "bsd" in os_name:
         nvidia = _probe_nvidia()
         if nvidia:
             gpu_vendor = "nvidia"

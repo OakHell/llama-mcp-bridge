@@ -49,15 +49,53 @@ def _macos_release_asset(arch: str) -> str:
     return "macos-arm64" if arch.lower() in ("arm64", "aarch64") else "macos-x64"
 
 
-def _extract_archive(archive_path: Path, dest_dir: Path) -> None:
-    """Extract .zip (Windows) or .tar.gz/.tar.xz (POSIX) archives."""
+def _extract_archive(
+    archive_path: Path,
+    dest_dir: Path,
+    max_bytes: int = 2 * 1024**3,
+    max_entries: int = 5000,
+) -> None:
+    """Extract .zip (Windows) or .tar.* (POSIX) archives with path-traversal, symlink, and size bounds."""
     dest_dir.mkdir(parents=True, exist_ok=True)
+    resolved_dest = dest_dir.resolve()
     name = archive_path.name.lower()
     if name.endswith(".zip"):
         with zipfile.ZipFile(archive_path, "r") as zf:
+            infos = zf.infolist()
+            if len(infos) > max_entries:
+                raise ValueError(f"Archive entry count {len(infos)} exceeds limit {max_entries}.")
+            total_bytes = 0
+            for info in infos:
+                total_bytes += max(0, info.file_size)
+                if total_bytes > max_bytes:
+                    raise ValueError(f"Archive uncompressed size exceeds limit {max_bytes} bytes.")
+                target = (resolved_dest / info.filename).resolve()
+                if not target.is_relative_to(resolved_dest):
+                    raise ValueError(f"Unsafe zip path traversal entry: {info.filename}")
+                if (info.external_attr >> 16) & 0o170000 == 0o120000:
+                    link_target = zf.read(info).decode("utf-8", errors="replace")
+                    resolved_link = (target.parent / link_target).resolve()
+                    if not resolved_link.is_relative_to(resolved_dest):
+                        raise ValueError(f"Unsafe zip symlink target outside dest_dir: {info.filename} -> {link_target}")
             zf.extractall(dest_dir)
     elif name.endswith((".tar.gz", ".tgz", ".tar.xz")):
         with tarfile.open(archive_path, "r:*") as tf:
+            members = tf.getmembers()
+            if len(members) > max_entries:
+                raise ValueError(f"Archive entry count {len(members)} exceeds limit {max_entries}.")
+            total_bytes = 0
+            for m in members:
+                total_bytes += max(0, m.size)
+                if total_bytes > max_bytes:
+                    raise ValueError(f"Archive uncompressed size exceeds limit {max_bytes} bytes.")
+                target = (resolved_dest / m.name).resolve()
+                if not target.is_relative_to(resolved_dest):
+                    raise ValueError(f"Unsafe tar path traversal entry: {m.name}")
+                if m.issym() or m.islnk():
+                    base = target.parent if m.issym() else resolved_dest
+                    resolved_link = (base / m.linkname).resolve()
+                    if not resolved_link.is_relative_to(resolved_dest):
+                        raise ValueError(f"Unsafe tar symlink/link target outside dest_dir: {m.name} -> {m.linkname}")
             tf.extractall(dest_dir)
     else:
         raise ValueError(f"Unsupported archive format: {archive_path}")
@@ -83,7 +121,7 @@ def _check_hardware_prerequisites(profile: SystemProfile, mode: str) -> list[str
     elif (
         profile.gpu_vendor == "apple"
         and mode in ("source-hermetic", "source-system")
-        and not shutil.which("xcode-select")
+        and subprocess.run(["xcode-select", "-p"], capture_output=True, check=False).returncode != 0
     ):
         missing.append("xcode-select (run: xcode-select --install)")
     elif profile.gpu_vendor == "cpu":
@@ -154,7 +192,11 @@ def _select_llama_release_asset(
             continue
 
         score = 0
-        if profile.gpu_vendor == "nvidia" and "cuda" in name or profile.gpu_vendor in ("amd", "intel") and "vulkan" in name:
+        if profile.gpu_vendor == "amd" and ("rocm" in name or "hip" in name):
+            score += 12
+        elif (profile.gpu_vendor == "nvidia" and "cuda" in name) or (
+            profile.gpu_vendor in ("amd", "intel") and "vulkan" in name
+        ):
             score += 10
         elif profile.os_name == "windows" and "vulkan" in name and profile.gpu_vendor != "nvidia":
             score += 5
@@ -299,7 +341,9 @@ def _auto_install_llama_server(
         }
         flag = backend_flags.get(profile.gpu_vendor, "-DGGML_NATIVE=ON")
         is_hermetic = mode == "source-hermetic"
-        cmake_cmd = ["cmake"] if shutil.which("cmake") else (["uvx", "cmake"] if is_hermetic and shutil.which("uvx") else ["cmake"])
+        if not shutil.which("cmake") and not (is_hermetic and shutil.which("uvx")):
+            raise RuntimeError("cmake not found; install cmake or uvx, or use --mode prebuilt")
+        cmake_cmd = ["cmake"] if shutil.which("cmake") else ["uvx", "cmake"]
         build_env: dict[str, str] | None = None
         if is_hermetic:
             scrub = {"CFLAGS", "CXXFLAGS", "LDFLAGS", "CMAKE_PREFIX_PATH"}
@@ -364,8 +408,13 @@ def _auto_install_llama_server(
 
 def _install_reboot_crontab(server_bin: str, models_ini: str, host: str, port: int, dry_run: bool) -> None:
     """Install a deduplicated @reboot user crontab entry tagged with # llama-mcp-bridge."""
+    srv_path = Path(server_bin).expanduser()
+    if not srv_path.is_absolute() or not srv_path.is_file():
+        raise ValueError(
+            f"Refusing to install @reboot crontab: server_bin must be an existing absolute path, got {server_bin!r}"
+        )
     entry = (
-        f"@reboot nohup {server_bin} --models-preset {models_ini} "
+        f"@reboot nohup {srv_path} --models-preset {models_ini} "
         f"--host {host} --port {port} >/dev/null 2>&1 & # llama-mcp-bridge"
     )
     if dry_run:
@@ -689,7 +738,16 @@ def _run_doctor() -> int:
 
     srv_bin = _find_llama_server(workspace, cfg.llama_server_bin)
     if srv_bin and (sys.platform == "win32" or os.access(srv_bin, os.X_OK)):
-        table.add_row("llama-server", "[green]PASS[/green]", str(srv_bin))
+        try:
+            ver_res = subprocess.run([str(srv_bin), "--version"], capture_output=True, text=True, timeout=5, check=False)
+            if ver_res.returncode == 0:
+                table.add_row("llama-server", "[green]PASS[/green]", str(srv_bin))
+            else:
+                failed = True
+                table.add_row("llama-server", "[red]FAIL[/red]", f"{srv_bin} exited {ver_res.returncode} on --version")
+        except (OSError, subprocess.SubprocessError) as exc:
+            failed = True
+            table.add_row("llama-server", "[red]FAIL[/red]", f"{srv_bin} failed to execute: {exc}")
     else:
         failed = True
         table.add_row("llama-server", "[red]FAIL[/red]", "Binary not found or not executable")
@@ -1032,7 +1090,7 @@ def _uninstall_bridge(dry_run: bool, yes: bool) -> None:
                 kept = [
                     ln
                     for ln in res.stdout.splitlines()
-                    if "# llama-mcp-bridge" not in ln and "llama-server" not in ln
+                    if "# llama-mcp-bridge" not in ln
                 ]
                 if kept:
                     subprocess.run(["crontab", "-"], input="\n".join(kept) + "\n", text=True, check=False)
@@ -1044,7 +1102,7 @@ def _uninstall_bridge(dry_run: bool, yes: bool) -> None:
             kept = [
                 ln
                 for ln in res.stdout.splitlines()
-                if "# llama-mcp-bridge" not in ln and "llama-server" not in ln
+                if "# llama-mcp-bridge" not in ln
             ]
             if kept:
                 subprocess.run(["crontab", "-"], input="\n".join(kept) + "\n", text=True, check=False)
@@ -1177,6 +1235,25 @@ def _run_tui_wizard() -> None:
 
 
     print("Manage, add, or remove models anytime with: llama-mcp-models")
+
+
+def _rewrite_models_ini_dir(models_ini: Path, new_models_dir: Path) -> None:
+    """Rewrite model/mmproj paths in an existing models.ini to point at new_models_dir."""
+    if not models_ini.is_file():
+        return
+    cp = configparser.ConfigParser()
+    cp.read(models_ini, encoding="utf-8")
+    for sec in cp.sections():
+        for key in ("model", "mmproj"):
+            if cp.has_option(sec, key):
+                cp.set(sec, key, str(new_models_dir / Path(cp.get(sec, key)).name))
+    lines: list[str] = []
+    for sec in cp.sections():
+        lines.append(f"[{sec}]")
+        for k, v in cp.items(sec):
+            lines.append(f"{k} = {v}")
+        lines.append("")
+    models_ini.write_text("\n".join(lines), encoding="utf-8")
 
 
 def main() -> None:
@@ -1341,6 +1418,8 @@ def main() -> None:
         and not args.force
     )
     if preserve_existing:
+        if args.models_dir:
+            _rewrite_models_ini_dir(models_ini_path, models_dir)
         print(f"Preserved existing {models_ini_path}")
     else:
         models_ini_path.write_text(ini_content, encoding="utf-8")

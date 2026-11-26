@@ -11,10 +11,10 @@ import base64
 import configparser
 import glob as glob_mod
 import json
+import logging
 import mimetypes
 import os
 import re
-import threading
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
@@ -30,8 +30,7 @@ from llama_mcp_bridge.paths import resolve_workspace
 from llama_mcp_bridge.supervisor import LlamaSupervisor, classify_inference_error
 
 mcp = FastMCP("Local Model Specialist")
-
-_MODEL_LOCK = threading.Lock()
+_LOGGER = logging.getLogger(__name__)
 
 DEFAULT_IGNORES: frozenset[str] = frozenset({
     ".git",
@@ -514,7 +513,7 @@ def query_llama(
             detect_hardware(),
             config.residency,
         )
-        if is_oom and config.fallback_on_oom and model != "digest" and not image_data_uris:
+        if is_oom and config.fallback_on_oom and model != "digest":
             fallback_out = query_llama(
                 model="digest",
                 system_prompt=system_prompt,
@@ -524,8 +523,9 @@ def query_llama(
                 image_data_uris=None,
                 json_schema=json_schema,
             )
+            dropped_note = " (text-only; images dropped)" if image_data_uris else ""
             return (
-                f"[Notice: Preset '{model}' hit VRAM/RAM OOM; automatically fell back to 'digest'.]\n\n"
+                f"[Notice: Preset '{model}' hit VRAM/RAM OOM; automatically fell back to 'digest'{dropped_note}.]\n\n"
                 f"{fallback_out}"
             )
         return diag
@@ -889,24 +889,23 @@ _BUILTIN_TOOL_MAP = {
 def _register_configured_tools(target_mcp: FastMCP | None = None) -> list[str]:
     """Register only configured built-in and custom [preset] MCP tools from models.ini."""
     srv = target_mcp or mcp
-    components = getattr(getattr(srv, "local_provider", None), "_components", None)
-    if isinstance(components, dict):
-        for key in [
-            k
-            for k in list(components.keys())
-            if k.startswith("tool:") and k not in ("tool:get_bridge_status@", "tool:ask_preset@")
-            and not k.startswith(("tool:get_bridge_status", "tool:ask_preset"))
-        ]:
-            components.pop(key, None)
+    # Guard FastMCP internal local_provider._components clearing so API changes fail loudly.
+    local_provider = getattr(srv, "local_provider", None)
+    components = getattr(local_provider, "_components", None)
+    if not isinstance(components, dict):
+        raise TypeError("FastMCP local_provider._components is unavailable; cannot refresh registered tools.")
+    for key in [
+        k
+        for k in list(components.keys())
+        if k.startswith("tool:") and not k.startswith(("tool:get_bridge_status", "tool:ask_preset"))
+    ]:
+        components.pop(key, None)
 
     cfg = load_config()
     ini_path = Path(cfg.models_ini)
     if not ini_path.is_file():
-        registered: list[str] = []
-        for fn in _BUILTIN_TOOL_MAP.values():
-            srv.tool()(fn)
-            registered.append(fn.__name__)
-        return registered
+        _LOGGER.warning("models.ini not found at %s; exposing only get_bridge_status and ask_preset.", ini_path)
+        return []
 
     cp = configparser.ConfigParser()
     try:

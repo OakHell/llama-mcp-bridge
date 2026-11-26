@@ -41,14 +41,15 @@ Non-login shells often omit `~/.local/bin` (POSIX) or `%USERPROFILE%\.local\bin`
   llama-mcp-install --presets digest --download-models digest --yes --install-service
   ```
 
-## 3. Verify & Apply MCP Client Config
+## 3. Verify & Wire MCP Client
 
 1. Run `llama-mcp-install --doctor` (`Server /health: PASS (Standby)` is healthy when `auto_spawn = true`).
-2. Apply the `"local-ai"` MCP entry directly into the target harness config (`~/.gemini/config/mcp_config.json` for `antigravity`, `~/.claude.json` for `claude-code`, `~/.cursor/mcp.json` for `cursor`):
+2. Print the `"local-ai"` MCP JSON snippet without modifying external files by default:
    ```bash
-   llama-mcp-install --configure-client <claude-code|cursor|cline|windsurf|zed|antigravity|other> --apply
+   llama-mcp-install --configure-client <claude-code|cursor|cline|windsurf|zed|antigravity|other>
    ```
-3. Instruct the user to **restart or reload their MCP client** so `tools/list` refreshes with only the configured specialist tools plus `get_bridge_status` and `ask_preset`.
+   Only pass `--apply` if the user explicitly authorizes modifying their harness config (`~/.gemini/config/mcp_config.json`, `~/.claude.json`, `~/.cursor/mcp.json`, etc.).
+3. Instruct the user to **restart or reload their MCP client** so `tools/list` refreshes with newly configured `ask_<preset>` tools (note: `ask_preset` can call newly added presets immediately without a restart).
 
 ## 4. Model Management & Black-Box Troubleshooting
 
@@ -66,6 +67,7 @@ Always run black-box CLI diagnostics before inspecting source code or logs:
 
 1. **`llama-mcp-install --doctor`** — Checks `bridge.ini` & `models.ini`, `llama-server` binary permissions, GGUF files, and `/health` (`Standby` when `auto_spawn = true`).
 2. **`llama-mcp-ps`** — Shows `ONLINE` / `STANDBY (auto-spawn)` / `OFFLINE`, active `residency`, VRAM tier, and `LOADED` / `IDLE` presets.
+3. **`llama-mcp-install --verify-models`** — Checks Hugging Face starter-pack URLs and suggests live GGUF alternatives on 404.
 3. **Common Failures:**
    - *Missing GGUF files*: Run `llama-mcp-models add <preset>` or `llama-mcp-install --download-models`.
    - *`Preset '<name>' is not configured in models.ini`*: Run `llama-mcp-models add <name>`.
