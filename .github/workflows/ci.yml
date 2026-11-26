@@ -44,11 +44,11 @@ jobs:
         with:
           usesh: true
           prepare: |
-            pkg install -y python311 curl
-            curl -LsSf https://astral.sh/uv/install.sh | sh
+            pkg install -y python311
+            pkg install -y uv || (python3.11 -m ensurepip --upgrade && python3.11 -m pip install --upgrade uv)
           run: |
-            export PATH="$HOME/.local/bin:$PATH"
-            uv sync --dev
+            export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+            uv sync --dev --python python3.11
             uv run pytest -v
             uv run llama-mcp-install --dry-run
             uv run llama-mcp-install --install-service --dry-run
