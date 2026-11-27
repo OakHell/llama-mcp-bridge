@@ -152,3 +152,32 @@ def test_m24_m25_m26_n19_presets_safety_pruning_atomic_cache_and_drift(tmp_path:
         res = verify_tier_models(tier="6gb", cache_path=cache_file, use_cache=True)
     assert cache_file.is_file()
     assert any(r.get("size_drift_pct") is not None and r["size_drift_pct"] > 20.0 for r in res)
+
+
+def test_readme_tier_table_matches_presets_py() -> None:
+    """README.md Hardware Tiers table must match presets.py parallel and coder/coder-long ctx."""
+    import re
+
+    readme = Path(__file__).resolve().parents[1] / "README.md"
+    text = readme.read_text(encoding="utf-8")
+    rows = re.findall(
+        r"^\|\s*`(6gb|8gb|12gb|16gb|24gb\+)`\s*\|[^|]+\|[^|]+\|\s*(\d+)K\s*/\s*(\d+)K\s*\|\s*(\d+)\s*\|",
+        text,
+        flags=re.MULTILINE,
+    )
+    assert len(rows) == 5
+    for tier, coder_k, long_k, parallel in rows:
+        profile = SimpleNamespace(
+            os_name="linux",
+            arch="x86_64",
+            gpu_vendor="cpu" if tier == "6gb" else "nvidia",
+            backend="cpu" if tier == "6gb" else "cuda",
+            vram_gb=6.0 if tier == "6gb" else 24.0,
+            ram_gb=32.0,
+            tier=tier,
+        )
+        cp = configparser.ConfigParser(interpolation=None)
+        cp.read_string(generate_models_ini(profile, "/tmp/models"))
+        assert cp["*"]["parallel"] == parallel
+        assert int(cp["coder"]["ctx-size"]) // 1024 == int(coder_k)
+        assert int(cp["coder-long"]["ctx-size"]) // 1024 == int(long_k)

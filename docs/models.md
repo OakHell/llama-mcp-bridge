@@ -10,8 +10,8 @@ llama-mcp-install --model-info coder
 ## Adding Custom Hugging Face or Local GGUF Models
 
 ```bash
-llama-mcp-models add --hf owner/repo:Q4_K_M --preset my-model --tune-mode conservative
-llama-mcp-models add --file /path/to/model.gguf --preset local-model --tool-name ask_local
+llama-mcp-models add my-model --hf owner/repo:Q4_K_M --tune-mode conservative
+llama-mcp-models add local-model --file /path/to/model.gguf --tool-name ask_local
 ```
 
 `--tune-mode conservative|approximate` inspects the GGUF v2/v3 header (`gguf_header.py`) to size KV caches and context windows for your detected VRAM/RAM. See [gguf-auto-tuning.md](gguf-auto-tuning.md).
