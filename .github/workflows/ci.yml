@@ -55,7 +55,15 @@ jobs:
             uv venv --python python3.12 --system-site-packages
             uv pip install hatchling editables
             uv pip install --no-build-isolation --no-deps -e .
-            uv pip install --no-deps fastmcp mcp
+            uv pip install --no-deps fastmcp fastmcp-slim mcp mcp-types \
+              pydantic-settings docstring-parser cyclopts py-key-value-aio \
+              uncalled-for openapi-pydantic jsonref jsonschema-path pathable \
+              referencing jsonschema-specifications rich-rst mdurl \
+              markdown-it-py pygments beartype cachetools typing-inspection \
+              annotated-types typing-extensions exceptiongroup h11 \
+              httpcore2 httpx2 idna certifi charset-normalizer urllib3 \
+              click python-multipart sse-starlette websockets \
+              opentelemetry-api pyjwt joserfc email-validator dnspython
             .venv/bin/python -m pytest -v
             .venv/bin/llama-mcp-install --dry-run
             .venv/bin/llama-mcp-install --install-service --dry-run
