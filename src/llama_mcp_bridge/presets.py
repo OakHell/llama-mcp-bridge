@@ -12,6 +12,23 @@ from typing import Any
 
 from .hardware import SystemProfile
 
+__all__ = [
+    "RESIDENCY_PROFILES",
+    "TIER_MODEL_REGISTRY",
+    "_VALID_PRESETS",
+    "generate_models_ini",
+    "get_tier_model_specs",
+    "merge_custom_preset_ini",
+    "merge_models_ini",
+    "probe_model_metadata",
+    "remove_models_from_ini",
+    "resolve_hf_gguf_repo",
+    "resolve_residency_settings",
+    "search_hf_gguf_models",
+    "verify_model_url",
+    "verify_tier_models",
+]
+
 RESIDENCY_PROFILES: dict[str, dict[str, Any]] = {
     "stingy": {"idle_timeout_s": 15, "max_models_cap": 1},
     "moderate": {"idle_timeout_s": 120, "max_models_cap": 1},
@@ -34,18 +51,9 @@ def resolve_residency_settings(tier: str, residency: str = "moderate") -> tuple[
     return idle_s, models_max
 
 
-def generate_models_ini(
-    profile: SystemProfile,
-    models_dir: str = "/mnt/ai/models",
-    residency: str = "moderate",
-    selected_presets: Sequence[str] | None = None,
-) -> str:
-    """Generate a models.ini configuration string based on hardware profile.
-
-    Scales context sizes, cache precision, and parallelism according to
-    available VRAM tiers (6gb, 8gb, 12gb, 16gb, 24gb+).
-    """
-    base_config: dict[str, dict[str, Any]] = {
+def _build_base_preset_config(models_dir: str) -> dict[str, dict[str, Any]]:
+    """Build the default 8gb baseline [global] and specialist preset dictionary."""
+    return {
         "global": {
             "n-gpu-layers": "-1",
             "fit": "on",
@@ -60,6 +68,12 @@ def generate_models_ini(
                 '"\\n\\nConsidering the limited time, I have to give the final '
                 'solution based on my thinking now.\\n"'
             ),
+        },
+        "digest": {
+            "model": f"{models_dir}/LFM3-1.7B-Q8_0.gguf",
+            "ctx-size": "65536",
+            "temp": "0.1",
+            "reasoning-budget": "0",
         },
         "coder-fast": {
             "model": f"{models_dir}/qwen2.5-coder-7b-instruct-q4_k_m.gguf",
@@ -81,6 +95,13 @@ def generate_models_ini(
             "temp": "0.1",
             "reasoning-budget": "2048",
         },
+        "vision": {
+            "model": f"{models_dir}/MiniCPM-V-4_6-Q4_K_M.gguf",
+            "mmproj": f"{models_dir}/mmproj-model-f16.gguf",
+            "ctx-size": "4096",
+            "temp": "0.2",
+            "reasoning-budget": "0",
+        },
         "vision-deep": {
             "model": f"{models_dir}/Qwen3.5-9B-UD-Q4_K_XL.gguf",
             "mmproj": f"{models_dir}/mmproj-BF16.gguf",
@@ -89,13 +110,6 @@ def generate_models_ini(
             "ctx-size": "8192",
             "temp": "0.2",
             "reasoning-budget": "1024",
-        },
-        "vision": {
-            "model": f"{models_dir}/MiniCPM-V-4_6-Q4_K_M.gguf",
-            "mmproj": f"{models_dir}/mmproj-model-f16.gguf",
-            "ctx-size": "4096",
-            "temp": "0.2",
-            "reasoning-budget": "0",
         },
         "reasoner": {
             "model": f"{models_dir}/granite-4.2-8b-Q4_K_M.gguf",
@@ -117,13 +131,21 @@ def generate_models_ini(
             "temp": "0.7",
             "reasoning-budget": "1024",
         },
-        "digest": {
-            "model": f"{models_dir}/LFM3-1.7B-Q8_0.gguf",
-            "ctx-size": "65536",
-            "temp": "0.1",
-            "reasoning-budget": "0",
-        },
     }
+
+
+def generate_models_ini(
+    profile: SystemProfile,
+    models_dir: str = "/mnt/ai/models",
+    residency: str = "moderate",
+    selected_presets: Sequence[str] | None = None,
+) -> str:
+    """Generate a models.ini configuration string based on hardware profile.
+
+    Scales context sizes, cache precision, and parallelism according to
+    available VRAM tiers (6gb, 8gb, 12gb, 16gb, 24gb+).
+    """
+    base_config = _build_base_preset_config(models_dir)
 
     tier_map: dict[str, dict[str, Any]] = {
         "6gb": {
@@ -282,7 +304,10 @@ def generate_models_ini(
 
 def _with_urls(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
-        {**s, "url": f"https://huggingface.co/{s['repo']}/resolve/main/{s['filename']}"}
+        {
+            **s,
+            "url": f"https://huggingface.co/{s['repo']}/resolve/main/{urllib.parse.quote(s['filename'], safe='/')}",
+        }
         for s in specs
     ]
 
@@ -326,16 +351,8 @@ TIER_MODEL_REGISTRY: dict[str, list[dict[str, Any]]] = {
 }
 
 
-_VALID_PRESETS = (
-    "digest",
-    "coder-fast",
-    "coder",
-    "coder-long",
-    "vision",
-    "vision-deep",
-    "reasoner",
-    "analyst",
-    "generalist",
+_VALID_PRESETS: tuple[str, ...] = tuple(
+    key for key in _build_base_preset_config("") if key != "global"
 )
 
 
@@ -369,7 +386,12 @@ def get_tier_model_specs(
     return [s for s in specs if s["role"] in wanted_roles]
 
 
-def probe_model_metadata(url: str, timeout: float = 5.0) -> tuple[bool, int | None, str | None]:
+_HF_HTTP_TIMEOUT: float = 10.0
+
+
+def probe_model_metadata(
+    url: str, timeout: float = _HF_HTTP_TIMEOUT
+) -> tuple[bool, int | None, str | None]:
     """Check whether a Hugging Face URL exists and return (ok, size_bytes, expected_sha256)."""
     req = urllib.request.Request(
         url,
@@ -394,13 +416,15 @@ def probe_model_metadata(url: str, timeout: float = 5.0) -> tuple[bool, int | No
     return False, None, None
 
 
-def verify_model_url(url: str, timeout: float = 10.0) -> tuple[bool, int | None]:
+def verify_model_url(url: str, timeout: float = _HF_HTTP_TIMEOUT) -> tuple[bool, int | None]:
     """Check whether a Hugging Face model URL exists via HTTP HEAD."""
     ok, size_bytes, _ = probe_model_metadata(url, timeout=timeout)
     return ok, size_bytes
 
 
-def search_hf_gguf_models(query: str, limit: int = 5, timeout: float = 10.0) -> list[dict[str, Any]]:
+def search_hf_gguf_models(
+    query: str, limit: int = 5, timeout: float = _HF_HTTP_TIMEOUT
+) -> list[dict[str, Any]]:
     """Query Hugging Face API for live GGUF model alternatives."""
     encoded = urllib.parse.quote(query)
     api_url = (
@@ -417,7 +441,7 @@ def search_hf_gguf_models(query: str, limit: int = 5, timeout: float = 10.0) -> 
     return []
 
 
-def verify_tier_models(tier: str | None = None) -> list[dict[str, Any]]:
+def verify_tier_models(tier: str | None = None, max_workers: int = 8) -> list[dict[str, Any]]:
     """Verify model URLs concurrently for one tier (or all tiers) and return status + suggestions."""
     tiers = [tier] if tier else list(TIER_MODEL_REGISTRY.keys())
     entries = [(t, spec) for t in tiers for spec in get_tier_model_specs(t)]
@@ -428,7 +452,7 @@ def verify_tier_models(tier: str | None = None) -> list[dict[str, Any]]:
         return url, ok, size_bytes
 
     url_cache: dict[str, tuple[bool, int | None]] = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, max_workers)) as pool:
         for url, ok, size_bytes in pool.map(_check, unique_urls):
             url_cache[url] = (ok, size_bytes)
 
@@ -503,7 +527,11 @@ def remove_models_from_ini(
     models_dir: Path,
     delete_files: bool = True,
 ) -> list[str]:
-    """Remove presets from models.ini and delete unreferenced GGUF/mmproj files."""
+    """Remove presets from models.ini and delete unreferenced GGUF/mmproj files.
+
+    Uses ``Path(...).name`` to strip any directory prefix so file deletion is
+    strictly restricted to basenames inside ``models_dir``.
+    """
     if not existing_path.is_file():
         return []
 
@@ -515,6 +543,7 @@ def remove_models_from_ini(
         if cp.has_section(preset):
             for key in ("model", "mmproj"):
                 if cp.has_option(preset, key):
+                    # .name strips any directory components so deletion stays strictly inside models_dir.
                     candidate_files.add(Path(cp.get(preset, key)).name)
             cp.remove_section(preset)
 
@@ -546,6 +575,7 @@ def resolve_hf_gguf_repo(
     repo_spec: str,
     mmproj_hint: str | None = None,
     timeout: float = 15.0,
+    tier: str | None = None,
 ) -> tuple[str, str, str | None]:
     """Resolve an unconstrained Hugging Face GGUF repo[:selector] to (repo_id, model_file, mmproj_file)."""
     repo_id, _, selector = repo_spec.strip().partition(":")
@@ -583,10 +613,20 @@ def resolve_hf_gguf_repo(
     elif len(model_files) == 1:
         chosen_model = model_files[0]
     else:
-        q4_matches = [f for f in model_files if "q4_k_m" in f.lower()]
-        if len(q4_matches) == 1:
-            chosen_model = q4_matches[0]
-        else:
+        tier_quant_prefs: dict[str, tuple[str, ...]] = {
+            "6gb": ("q4_k_s", "q4_k_m", "iq4_xs"),
+            "8gb": ("q4_k_m", "q4_k_s", "q5_k_m"),
+            "12gb": ("q4_k_m", "q5_k_m", "q6_k"),
+            "16gb": ("q6_k", "q5_k_m", "q4_k_m"),
+            "24gb+": ("q6_k", "q8_0", "q5_k_m", "q4_k_m"),
+        }
+        prefs = tier_quant_prefs.get(tier, ("q4_k_m",)) if tier else ("q4_k_m",)
+        for quant_tok in prefs:
+            q_matches = [f for f in model_files if quant_tok in f.lower()]
+            if len(q_matches) == 1:
+                chosen_model = q_matches[0]
+                break
+        if chosen_model is None:
             raise ValueError(
                 f"Multiple GGUFs found in {repo_id}; specify <repo>:<quant-or-filename>. "
                 f"Available: {', '.join(model_files)}"
@@ -646,14 +686,22 @@ def merge_custom_preset_ini(
     if "*" not in merged and "*" in fresh:
         merged["*"] = dict(fresh["*"])
 
-    resolved_ctx = str(ctx_size) if ctx_size is not None else ("4096" if profile.tier == "6gb" else "8192")
+    tier_ctx_defaults = {
+        "6gb": "4096",
+        "8gb": "8192",
+        "12gb": "12288",
+        "16gb": "16384",
+        "24gb+": "32768",
+    }
+    resolved_ctx = str(ctx_size) if ctx_size is not None else tier_ctx_defaults.get(profile.tier, "8192")
+    default_ngl = "0" if profile.gpu_vendor == "cpu" else fresh["*"].get("n-gpu-layers", "-1")
+    resolved_ngl = str(n_gpu_layers) if n_gpu_layers is not None else default_ngl
     entry: dict[str, str] = {
         "model": str(model_path),
         "ctx-size": resolved_ctx,
+        "n-gpu-layers": resolved_ngl,
         "temp": "0.3",
     }
-    if n_gpu_layers is not None:
-        entry["n-gpu-layers"] = str(n_gpu_layers)
     if mmproj_path:
         entry["mmproj"] = str(mmproj_path)
     merged[clean_name] = entry

@@ -8,10 +8,17 @@ reference implementation.
 import configparser
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
 from llama_mcp_bridge.paths import resolve_workspace
+
+__all__ = [
+    "BridgeConfig",
+    "get_config_home",
+    "load_config",
+    "resolve_path",
+]
 
 
 @dataclass
@@ -19,12 +26,12 @@ class BridgeConfig:
     """Configuration settings for the Llama MCP Bridge."""
 
     workspace: str = ""
-    server_url: str = "http://127.0.0.1:8080/v1/chat/completions"
     host: str = "127.0.0.1"
     port: int = 8080
     models_dir: str = ""
     models_ini: str = ""
     llama_server_bin: str = ""
+    server_log: str = ""
     auto_spawn: bool = True
     residency: str = "moderate"
     fallback_on_oom: bool = False
@@ -95,26 +102,29 @@ def _load_ini_config(config_path: Path) -> dict[str, str]:
     return config_dict
 
 
+_CONFIG_CACHE: dict[tuple[str, int | None, str], BridgeConfig] = {}
+
+
 def load_config(explicit_dir: Path | str | None = None) -> BridgeConfig:
-    """Load and merge configuration from bridge.ini and defaults."""
+    """Load and merge configuration from bridge.ini and defaults (mtime-cached)."""
     config_home = get_config_home(explicit_dir=explicit_dir)
     bridge_ini_path = config_home / "bridge.ini"
+    try:
+        ini_mtime_ns: int | None = bridge_ini_path.stat().st_mtime_ns if bridge_ini_path.is_file() else None
+    except OSError:
+        ini_mtime_ns = None
+
+    cache_key = (str(config_home), ini_mtime_ns, sys.platform)
+    if cache_key in _CONFIG_CACHE:
+        return replace(_CONFIG_CACHE[cache_key])
 
     config_dict: dict[str, str] = {}
-    if bridge_ini_path.exists():
+    if ini_mtime_ns is not None:
         config_dict.update(_load_ini_config(bridge_ini_path))
 
     config = BridgeConfig()
-    int_fields = {
-        "port",
-        "health_timeout_s",
-        "request_timeout_s",
-        "max_tokens",
-        "timeout",
-        "max_images",
-        "max_total_chars",
-    }
-    bool_fields = {"use_gitignore", "auto_spawn", "fallback_on_oom"}
+    int_fields = {f.name for f in fields(BridgeConfig) if f.type in (int, "int")}
+    bool_fields = {f.name for f in fields(BridgeConfig) if f.type in (bool, "bool")}
 
     for key, value in config_dict.items():
         if hasattr(config, key):
@@ -149,10 +159,14 @@ def load_config(explicit_dir: Path | str | None = None) -> BridgeConfig:
     config.models_ini = str(
         resolve_path(config.models_ini, workspace) if config.models_ini else workspace / "models.ini"
     )
+    config.server_log = str(
+        resolve_path(config.server_log, workspace) if config.server_log else workspace / "llama-server.log"
+    )
     if config.llama_server_bin:
         bin_path = str(resolve_path(config.llama_server_bin, workspace))
         if sys.platform == "win32" and not bin_path.lower().endswith(".exe"):
             bin_path = f"{bin_path}.exe"
         config.llama_server_bin = bin_path
 
-    return config
+    _CONFIG_CACHE[cache_key] = config
+    return replace(config)

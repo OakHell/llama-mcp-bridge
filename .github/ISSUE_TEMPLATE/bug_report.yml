@@ -1,0 +1,39 @@
+name: Bug Report
+description: Report a bug or unexpected behaviour in llama-mcp-bridge
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands run, flags passed, or MCP tool invocation that triggered the issue.
+      placeholder: |
+        1. Run `llama-mcp-install --doctor`
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, GPU/VRAM, Python version, and `llama-mcp-install --version` output.
+      placeholder: |
+        - OS: Linux / macOS / Windows / FreeBSD
+        - GPU: e.g. NVIDIA RTX 3070 (8 GB) / Apple M2 / CPU
+        - Version: `llama-mcp-install --version`
+    validations:
+      required: true
+  - type: textarea
+    id: doctor_output
+    attributes:
+      label: "`llama-mcp-install --doctor` output"
+      description: Paste the output of `llama-mcp-install --doctor` (or `--doctor --json`) if applicable.
+      render: text

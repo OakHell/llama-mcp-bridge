@@ -11,6 +11,15 @@ import re
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
+__all__ = [
+    "BlockProtector",
+    "BoundaryDetector",
+    "InputSafetyGuard",
+    "SanitizationAuditRecord",
+    "StructuralContentDetector",
+    "clean_mcp_output",
+]
+
 # =====================================================================
 # 1. Input Normalisation & Safety Guards
 # =====================================================================

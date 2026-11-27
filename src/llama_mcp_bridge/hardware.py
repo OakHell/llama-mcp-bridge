@@ -4,6 +4,12 @@ import dataclasses
 import platform
 import subprocess
 
+__all__ = [
+    "SystemProfile",
+    "classify_vram_tier",
+    "detect_hardware",
+]
+
 
 @dataclasses.dataclass(frozen=True)
 class SystemProfile:
@@ -91,6 +97,7 @@ def _probe_nvidia() -> tuple[str, float, str] | None:
                 return name, mem_mib / 1024.0, compute
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
+    return None
 
 
 def _probe_amd() -> tuple[str, float] | None:
@@ -111,6 +118,7 @@ def _probe_amd() -> tuple[str, float] | None:
                     return "AMD ROCm", vram_bytes / (1024**3)
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
+    return None
 
 
 def _probe_apple() -> tuple[str, float] | None:
@@ -129,6 +137,7 @@ def _probe_apple() -> tuple[str, float] | None:
             return "Apple Silicon", vram
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
+    return None
 
 
 def _probe_intel_or_vulkan() -> tuple[str, float] | None:
@@ -145,6 +154,7 @@ def _probe_intel_or_vulkan() -> tuple[str, float] | None:
             return "Intel", 0.0
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
+    return None
 
 
 def _probe_windows_wmi() -> tuple[str, str, float] | None:
@@ -180,6 +190,7 @@ def _probe_windows_wmi() -> tuple[str, str, float] | None:
             return vendor, name, ram_bytes / (1024**3)
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
+    return None
 
 
 def detect_hardware() -> SystemProfile:

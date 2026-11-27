@@ -21,6 +21,7 @@ Non-login shells often omit `~/.local/bin` (POSIX) or `%USERPROFILE%\.local\bin`
   $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
   if (-not (Get-Command llama-mcp-install -ErrorAction SilentlyContinue)) { uv tool install git+https://github.com/OakHell/llama-mcp-bridge }
   ```
+  > If `uv tool update-shell` has not yet been run on Windows, `%USERPROFILE%\.local\bin` is not in the persistent user `PATH`; the `$env:Path` line above covers the current session (or run `uv tool update-shell` once and reopen the shell).
 - Run `llama-mcp-install --doctor` to check whether a workspace is already configured and healthy.
 
 ## 2. Autonomous Bootstrap

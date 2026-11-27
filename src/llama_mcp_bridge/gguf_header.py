@@ -7,6 +7,14 @@ from typing import Any, BinaryIO
 
 from llama_mcp_bridge.hardware import SystemProfile
 
+__all__ = [
+    "GgufMetadata",
+    "GgufTuningRecommendation",
+    "estimate_kv_cache_bytes",
+    "parse_gguf_header",
+    "recommend_gguf_tuning",
+]
+
 _GGUF_MAGIC = b"GGUF"
 _SUPPORTED_VERSIONS = (2, 3)
 

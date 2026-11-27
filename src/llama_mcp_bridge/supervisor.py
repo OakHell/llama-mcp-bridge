@@ -14,6 +14,23 @@ from typing import Any, Self
 import requests
 from requests.exceptions import ConnectionError, Timeout
 
+from llama_mcp_bridge.config import BridgeConfig
+
+__all__ = [
+    "DEFAULT_AUTO_SPAWN",
+    "DEFAULT_HEALTH_ENDPOINT",
+    "DEFAULT_LLAMA_SERVER_URL",
+    "DEFAULT_MAX_RETRIES",
+    "DEFAULT_POLL_INTERVAL_SECONDS",
+    "DEFAULT_SERVER_BINARY",
+    "DEFAULT_TIMEOUT_SECONDS",
+    "LlamaServerConfig",
+    "LlamaSupervisor",
+    "ServerHealthStatus",
+    "classify_inference_error",
+    "create_supervisor",
+]
+
 # British/South African English spelling conventions applied throughout
 # e.g. "colour", "analyse", "behaviour", "programme", "centre"
 
@@ -58,15 +75,15 @@ class LlamaSupervisor:
     is running and healthy before attempting to communicate with it.
     """
 
-    def __init__(self, config: LlamaServerConfig | None = None):
+    def __init__(self, config: BridgeConfig | LlamaServerConfig | None = None):
         """
         Initialize the LlamaSupervisor with optional configuration.
 
         Args:
-            config: Optional LlamaServerConfig instance. If not provided,
+            config: Optional LlamaServerConfig or BridgeConfig instance. If not provided,
                    uses default configuration with auto_spawn enabled.
         """
-        self.config = config or LlamaServerConfig()
+        self.config: Any = config or LlamaServerConfig()
         self._process: subprocess.Popen | None = None
         self._health_status: ServerHealthStatus = ServerHealthStatus()
         self._lock = threading.Lock()
@@ -108,7 +125,9 @@ class LlamaSupervisor:
 
             workspace = Path(getattr(self.config, "workspace", "") or get_config_home())
             workspace.mkdir(parents=True, exist_ok=True)
-            self._log_path = workspace / "llama-server.log"
+            custom_log = getattr(self.config, "server_log", "")
+            self._log_path = Path(custom_log) if custom_log else (workspace / "llama-server.log")
+            self._log_path.parent.mkdir(parents=True, exist_ok=True)
             log_fh = self._log_path.open("ab")
 
             # Prepare Popen kwargs
@@ -151,10 +170,11 @@ class LlamaSupervisor:
         proc = self._process
         if proc is None or proc.stderr is None:
             return
+        stderr = proc.stderr
 
         def _drain() -> None:
             try:
-                for line in proc.stderr:
+                for line in stderr:
                     text = line.decode("utf-8", errors="replace") if isinstance(line, bytes) else str(line)
                     self._stderr_tail.append(text.rstrip())
             except (OSError, ValueError):
@@ -334,32 +354,33 @@ class LlamaSupervisor:
             True if server was stopped successfully, False otherwise.
         """
         with self._lock:
-            if not self._is_process_running():
+            proc = self._process
+            if not self._is_process_running() or proc is None:
                 return True
 
             try:
                 # Send SIGTERM for graceful shutdown
                 if sys.platform != "win32":
-                    os.killpg(self._process.pid, signal.SIGTERM)
+                    os.killpg(proc.pid, signal.SIGTERM)
                 else:
-                    self._process.terminate()
+                    proc.terminate()
 
                 # Wait for process to terminate
                 try:
-                    self._process.wait(timeout=10)
+                    proc.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     # Force kill if graceful shutdown fails
                     if sys.platform != "win32":
-                        os.killpg(self._process.pid, signal.SIGKILL)
+                        os.killpg(proc.pid, signal.SIGKILL)
                     else:
-                        self._process.kill()
-                    self._process.wait()
+                        proc.kill()
+                    proc.wait()
 
                 # Close pipes on all platforms to prevent resource leaks
-                if self._process.stdout:
-                    self._process.stdout.close()
-                if self._process.stderr:
-                    self._process.stderr.close()
+                if proc.stdout:
+                    proc.stdout.close()
+                if proc.stderr:
+                    proc.stderr.close()
 
                 self._process = None
                 self._running = False
