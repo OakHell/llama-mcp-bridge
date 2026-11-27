@@ -549,6 +549,7 @@ def main() -> None:
         help="Logging output format (text or json).",
     )
     parser.add_argument("--migrate-config", action="store_true", help="Migrate bridge.ini to the current schema_version with .bak backup.")
+    parser.add_argument("--enterprise", action="store_true", help="Enable opt-in [enterprise] mode in bridge.ini.")
     parser.add_argument(
         "--mode",
         choices=["prebuilt", "source-hermetic", "source-system", "system-bin"],

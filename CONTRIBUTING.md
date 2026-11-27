@@ -36,3 +36,6 @@ You can also use the `Makefile` shortcuts (`make check` or `make test`, `make li
 1. Create a feature branch from `main` (e.g. `feat/my-change` or `fix/issue-123`).
 2. Ensure `uv run ruff check .`, `uv run mypy src`, and `uv run pytest -v` pass with zero errors.
 3. Fill out the pull request template describing the change and verification performed.
+
+## Enterprise Extra (`src/llama_mcp_bridge/enterprise/`)
+- `audit.py` (`E3`), `probes.py` (`E7`), `tenant.py` (`E11`): opt-in `[enterprise]` modules, never imported unless `--enterprise` / `enterprise_mode = true`.

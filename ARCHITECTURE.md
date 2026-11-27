@@ -22,6 +22,7 @@ flowchart TD
         DIAG["diagnostics.py<br/>(--profile, --selftest, --export/--diff-config)"]
         SIGN["signing.py<br/>(cosign/gpg release verification)"]
         HTTP["http_resilience.py<br/>(backoff, circuit breaker, ENOSPC/EMFILE)"]
+        ENT["enterprise/<br/>(audit.py, probes.py, tenant.py)"]
         LOG["logging_utils.py<br/>(text & JSON log formatter)"]
     end
 

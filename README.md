@@ -182,6 +182,16 @@ Spanning distinct model families decorrelates role failures across extraction, c
 
 All presets use `reasoning-format = deepseek` with a shared `reasoning-budget-message` cutoff string so thinking models emit a final answer before hitting token limits, paired with deterministic tag stripping in [hygiene.py](src/llama_mcp_bridge/hygiene.py). See [docs/reasoning-management.md](docs/reasoning-management.md), [docs/gguf-auto-tuning.md](docs/gguf-auto-tuning.md), [docs/failure-classification.md](docs/failure-classification.md), and [ARCHITECTURE.md](ARCHITECTURE.md) for deep dives.
 
+## Enterprise Extra (`[enterprise]` / `--enterprise`)
+
+Install the optional extra via `uv tool install "llama-mcp-bridge[enterprise]"` (or `pip install "llama-mcp-bridge[enterprise]"`) and pass `--enterprise` (or set `enterprise_mode = true` in `bridge.ini` / `LLAMA_MCP_ENTERPRISE=1`) to unlock:
+- **Rotating JSONL Audit Log (`E3`):** `AuditLogger` (`--audit-log`) records tool invocations (`input_sha256`, `files_accessed`, `duration_ms`, `status`) without raw prompt payloads.
+- **Liveness/Readiness & Watchdog (`E7`):** Exposes `/livez` and `/readyz` on the metrics server plus pure-Python `sd_notify` (`--watchdog`).
+- **Multi-Tenant Isolation (`E11`):** `--tenant` + `--shared-models-dir` isolate per-tenant config/logs (`0o700` on POSIX) while sharing read-only GGUF blobs under advisory file locks.
+
+> [!WARNING]
+> **Unvalidated in Production:** While `E3`, `E7`, and `E11` are verified by automated unit and fault-injection tests, **none of these features have been tested, deployed, or reported on in a real production environment yet**. Audit them in staging before relying on them in production.
+
 ## Tradeoffs & Non-Goals
 
 - **Opt-In Streaming (`stream=True`) & Progress:** Specialist tools default to complete-response mode (`stream=False`), with `stream=True` SSE accumulation and `notifications/progress` heartbeats after `30s` available when requested.

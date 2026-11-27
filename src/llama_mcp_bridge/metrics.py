@@ -101,8 +101,11 @@ def start_metrics_server(
     port: int,
     metrics: BridgeMetrics | None = None,
     host: str = "127.0.0.1",
+    *,
+    enterprise_mode: bool = False,
+    readiness_check: Any = None,
 ) -> ThreadingHTTPServer:
-    """Start a background daemon HTTP server exposing /metrics and /healthz."""
+    """Start a background daemon HTTP server exposing /metrics, /healthz, and (when enterprise) /livez + /readyz."""
     collector = metrics or METRICS
 
     class _MetricsHandler(BaseHTTPRequestHandler):
@@ -117,6 +120,24 @@ def start_metrics_server(
             elif self.path.startswith("/healthz"):
                 body = json.dumps({"status": "ok"}).encode("utf-8")
                 self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            elif enterprise_mode and self.path.startswith("/livez"):
+                body = json.dumps({"status": "alive"}).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            elif enterprise_mode and self.path.startswith("/readyz"):
+                from llama_mcp_bridge.enterprise.probes import check_readiness
+
+                fn = readiness_check or (lambda: (True, "ok"))
+                code, payload = check_readiness(fn)
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(code)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
