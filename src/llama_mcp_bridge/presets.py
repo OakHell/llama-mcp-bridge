@@ -395,6 +395,17 @@ def get_tier_model_specs(
 _HF_HTTP_TIMEOUT: float = 10.0
 
 
+def _user_agent() -> str:
+    """Return a dynamic User-Agent header using the installed package version."""
+    try:
+        import importlib.metadata
+
+        ver = importlib.metadata.version("llama-mcp-bridge")
+    except importlib.metadata.PackageNotFoundError:
+        ver = "dev"
+    return f"llama-mcp-bridge/{ver}"
+
+
 def probe_model_metadata(
     url: str, timeout: float = _HF_HTTP_TIMEOUT
 ) -> tuple[bool, int | None, str | None]:
@@ -402,7 +413,7 @@ def probe_model_metadata(
     req = urllib.request.Request(
         url,
         method="HEAD",
-        headers={"User-Agent": "llama-mcp-bridge/0.1.0"},
+        headers={"User-Agent": _user_agent()},
     )
     try:
         with DEFAULT_HTTP_CLIENT.urlopen(req, timeout=timeout) as resp:
@@ -489,6 +500,13 @@ def verify_tier_models(
         if not ok:
             stem = spec["filename"].replace(".gguf", "").split("-")[0]
             suggestions = search_hf_gguf_models(stem, limit=3)
+        size_drift_pct: float | None = None
+        expected_gb = float(spec.get("size_gb") or 0)
+        if ok and size_bytes is not None and size_bytes > 0 and expected_gb > 0:
+            actual_gb = size_bytes / (1024**3)
+            drift = abs(actual_gb - expected_gb) / expected_gb
+            if drift > 0.20:
+                size_drift_pct = round(drift * 100.0, 1)
         results.append(
             {
                 "tier": t,
@@ -497,6 +515,7 @@ def verify_tier_models(
                 "url": spec["url"],
                 "ok": ok,
                 "size_bytes": size_bytes,
+                "size_drift_pct": size_drift_pct,
                 "suggestions": suggestions,
             }
         )
@@ -510,7 +529,14 @@ def verify_tier_models(
                     existing_cache = loaded
             existing_cache[cache_key] = {"ts": time.time(), "results": results}
             cache_path.parent.mkdir(parents=True, exist_ok=True)
-            cache_path.write_text(json.dumps(existing_cache, indent=2), encoding="utf-8")
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(
+                "w", dir=cache_path.parent, encoding="utf-8", delete=False, prefix=".cache-", suffix=".tmp"
+            ) as tf:
+                tf.write(json.dumps(existing_cache, indent=2))
+                tmp_path = Path(tf.name)
+            tmp_path.replace(cache_path)
         except OSError:
             pass
 
@@ -615,8 +641,9 @@ def prune_unreferenced_models(
     existing_path: Path,
     models_dir: Path,
     dry_run: bool = False,
+    include_partials: bool = True,
 ) -> list[str]:
-    """Identify and remove .gguf files in models_dir not referenced by any preset in models.ini."""
+    """Identify and remove unreferenced .gguf (case-insensitive) and optional .part/.gguf.tmp files."""
     if not models_dir.is_dir():
         return []
 
@@ -627,11 +654,16 @@ def prune_unreferenced_models(
         for sec in cp.sections():
             for key in ("model", "mmproj"):
                 if cp.has_option(sec, key):
-                    referenced.add(Path(cp.get(sec, key)).name)
+                    referenced.add(Path(cp.get(sec, key)).name.lower())
 
     pruned: list[str] = []
-    for candidate in sorted(models_dir.glob("*.gguf")):
-        if candidate.name not in referenced:
+    for candidate in sorted(models_dir.iterdir()):
+        if not candidate.is_file():
+            continue
+        name_lower = candidate.name.lower()
+        is_gguf = name_lower.endswith(".gguf")
+        is_partial = include_partials and name_lower.endswith((".part", ".gguf.tmp"))
+        if (is_gguf and name_lower not in referenced) or is_partial:
             if not dry_run:
                 candidate.unlink(missing_ok=True)
             pruned.append(candidate.name)
@@ -737,7 +769,7 @@ def merge_custom_preset_ini(
 ) -> str:
     """Merge a custom or overridden [preset] entry with hardware-tier or tuned defaults into models.ini."""
     clean_name = preset_name.strip()
-    if not clean_name or clean_name == "*":
+    if not clean_name or clean_name == "*" or clean_name.upper() == "DEFAULT":
         raise ValueError(f"Invalid preset name: {preset_name!r}")
 
     fresh = configparser.ConfigParser()

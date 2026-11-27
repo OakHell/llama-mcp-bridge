@@ -31,4 +31,4 @@ log_format = text
 
 ## `models.ini`
 
-`models.ini` is passed directly to `llama-server --models-preset`. Inline `#` comments are preserved; use `llama-mcp-install --export-config` or `--diff-config` to inspect effective merged settings.
+`models.ini` is passed directly to `llama-server --models-preset`. Note that `llama-mcp-models add`/`remove` re-serialise `models.ini` via Python's `ConfigParser`, which strips inline or standalone `#` comments; use `llama-mcp-install --export-config` or `--diff-config` to inspect effective merged settings.

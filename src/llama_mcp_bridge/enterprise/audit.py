@@ -52,6 +52,10 @@ class AuditLogger:
     ) -> dict[str, Any]:
         """Write a single JSONL audit record without storing raw prompt text."""
         input_sha256 = hashlib.sha256(input_text.encode("utf-8", errors="replace")).hexdigest()
+        hashed_files = [
+            hashlib.sha256(f.encode("utf-8", errors="replace")).hexdigest()[:16]
+            for f in files_accessed
+        ]
         entry: dict[str, Any] = {
             "timestamp": datetime.now(UTC).isoformat(),
             "request_id": request_id,
@@ -60,7 +64,7 @@ class AuditLogger:
             "tool": tool,
             "preset": preset,
             "input_sha256": input_sha256,
-            "files_accessed": list(files_accessed),
+            "files_accessed": hashed_files,
             "duration_ms": round(duration_ms, 2),
             "status": status,
             "fallback_used": fallback_used,

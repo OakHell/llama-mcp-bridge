@@ -107,3 +107,48 @@ def test_b17_resolve_hf_gguf_repo_wraps_network_and_json_errors() -> None:
         pytest.raises(RuntimeError, match="Failed to query Hugging Face repository"),
     ):
         resolve_hf_gguf_repo("owner/repo")
+
+
+def test_m24_m25_m26_n19_presets_safety_pruning_atomic_cache_and_drift(tmp_path: Path) -> None:
+    """M24: reject DEFAULT; M25: .GGUF/.part pruning; M26: atomic cache; N19: size_drift_pct."""
+    from unittest.mock import patch
+
+    from llama_mcp_bridge.presets import prune_unreferenced_models, verify_tier_models
+
+    profile = SimpleNamespace(
+        os_name="linux",
+        arch="x86_64",
+        gpu_vendor="nvidia",
+        backend="cuda",
+        vram_gb=8.0,
+        ram_gb=32.0,
+        tier="8gb",
+    )
+    models_ini = tmp_path / "models.ini"
+    models_ini.write_text("[*]\n[digest]\nmodel = keep.gguf\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid preset name"):
+        merge_custom_preset_ini(
+            models_ini,
+            profile=profile,
+            residency="moderate",
+            models_dir=tmp_path,
+            preset_name="DEFAULT",
+            model_path=tmp_path / "x.gguf",
+        )
+
+    (tmp_path / "keep.gguf").write_bytes(b"1")
+    (tmp_path / "STALE.GGUF").write_bytes(b"2")
+    (tmp_path / "orphan.gguf.part").write_bytes(b"3")
+    pruned = prune_unreferenced_models(models_ini, tmp_path, include_partials=True)
+    assert set(pruned) == {"STALE.GGUF", "orphan.gguf.part"}
+    assert (tmp_path / "keep.gguf").exists()
+
+    cache_file = tmp_path / "verify_cache.json"
+    with (
+        patch("llama_mcp_bridge.presets.verify_model_url", return_value=(True, 10 * 1024**3)),
+        patch("llama_mcp_bridge.presets.search_hf_gguf_models", return_value=[]),
+    ):
+        res = verify_tier_models(tier="6gb", cache_path=cache_file, use_cache=True)
+    assert cache_file.is_file()
+    assert any(r.get("size_drift_pct") is not None and r["size_drift_pct"] > 20.0 for r in res)

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import glob as glob_mod
+import html
 import os
+import re
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -226,7 +228,7 @@ def _expand_target_files(
 
     for raw in file_paths:
         expanded_str = str(Path(raw).expanduser())
-        has_magic = glob_mod.has_magic(expanded_str)
+        has_magic = (not Path(expanded_str).exists()) and glob_mod.has_magic(expanded_str)
 
         if has_magic:
             first_magic = min(
@@ -330,18 +332,19 @@ def _build_prompt_with_files(
     remaining = max_total_chars
 
     for p in target_files:
+        escaped_path = html.escape(str(p), quote=True)
         if remaining <= 0:
-            sections.append(f'<file path="{p}" status="omitted_budget_exhausted" />')
+            sections.append(f'<file path="{escaped_path}" status="omitted_budget_exhausted" />')
             continue
 
         try:
             with p.open("rb") as f:
-                raw_bytes = f.read(remaining + 1)
+                raw_bytes = f.read(remaining * 4 + 4)
         except OSError as e:
             return "", f"Error reading attached file {p}: {e}"
 
         if b"\x00" in raw_bytes[:4096]:
-            sections.append(f'<file path="{p}" status="skipped_binary" />')
+            sections.append(f'<file path="{escaped_path}" status="skipped_binary" />')
             continue
 
         content = raw_bytes.decode("utf-8", errors="replace")
@@ -354,7 +357,8 @@ def _build_prompt_with_files(
         else:
             remaining -= len(content)
 
-        sections.append(f'<file path="{p}">\n{content}\n</file>')
+        safe_content = re.sub(r"</file>", "&lt;/file&gt;", content, flags=re.IGNORECASE)
+        sections.append(f'<file path="{escaped_path}">\n{safe_content}\n</file>')
 
     attached_block = "\n\n".join(sections)
     combined = f"Attached Files:\n\n{attached_block}\n\nTask:\n{prompt}"

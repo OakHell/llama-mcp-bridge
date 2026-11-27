@@ -95,3 +95,24 @@ def test_b16_chunk_read_timeout_retries_and_resumes(tmp_path: Path) -> None:
         _download_spec_list([spec], tmp_path)
 
     assert (tmp_path / "m.gguf").read_bytes() == b"abcdef"
+
+
+def test_n13_sha256_mismatch_preserves_part_corrupt(tmp_path: Path) -> None:
+    """N13: SHA-256 mismatch renames .part to .part.corrupt and includes path in error."""
+    spec = {"filename": "bad.gguf", "url": "https://example.com/bad.gguf", "size_gb": 0.0}
+    resp = MagicMock()
+    resp.status = 200
+    resp.headers = {"Content-Length": "7"}
+    resp.read.side_effect = [b"corrupt", b""]
+    resp.__enter__ = lambda s: s
+    resp.__exit__ = lambda s, *a: None
+
+    with (
+        patch("llama_mcp_bridge.installer.probe_model_metadata", return_value=(True, 7, "0" * 64)),
+        patch("llama_mcp_bridge.model_download.DEFAULT_HTTP_CLIENT.urlopen", return_value=resp),
+        pytest.raises(RuntimeError, match=r"bad\.gguf\.part\.corrupt"),
+    ):
+        _download_spec_list([spec], tmp_path)
+
+    assert (tmp_path / "bad.gguf.part.corrupt").read_bytes() == b"corrupt"
+    assert not (tmp_path / "bad.gguf.part").exists()

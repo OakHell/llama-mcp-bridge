@@ -57,9 +57,11 @@ def _verify_and_finalize_part(part: Path, target: Path, filename: str, expected_
     if expected_sha256:
         actual = _compute_sha256(part)
         if actual.lower() != expected_sha256.lower():
-            part.unlink(missing_ok=True)
+            corrupt_path = part.with_name(f"{part.name}.corrupt")
+            part.replace(corrupt_path)
             raise RuntimeError(
-                f"SHA-256 mismatch for {filename}: expected {expected_sha256}, got {actual}"
+                f"SHA-256 mismatch for {filename}: expected {expected_sha256}, got {actual} "
+                f"(preserved corrupt partial at {corrupt_path})"
             )
         print(f"Verified SHA-256: {actual[:12]}...")
     part.replace(target)
