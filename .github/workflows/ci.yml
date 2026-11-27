@@ -56,6 +56,6 @@ jobs:
             uv pip install hatchling editables
             uv pip install --no-build-isolation --no-deps -e .
             uv pip install --no-deps fastmcp mcp
-            uv run --no-sync pytest -v
-            uv run --no-sync llama-mcp-install --dry-run
-            uv run --no-sync llama-mcp-install --install-service --dry-run
+            .venv/bin/python -m pytest -v
+            .venv/bin/llama-mcp-install --dry-run
+            .venv/bin/llama-mcp-install --install-service --dry-run
