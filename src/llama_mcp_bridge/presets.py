@@ -3,6 +3,7 @@
 import concurrent.futures
 import configparser
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -21,6 +22,7 @@ __all__ = [
     "merge_custom_preset_ini",
     "merge_models_ini",
     "probe_model_metadata",
+    "prune_unreferenced_models",
     "remove_models_from_ini",
     "resolve_hf_gguf_repo",
     "resolve_residency_settings",
@@ -441,8 +443,28 @@ def search_hf_gguf_models(
     return []
 
 
-def verify_tier_models(tier: str | None = None, max_workers: int = 8) -> list[dict[str, Any]]:
-    """Verify model URLs concurrently for one tier (or all tiers) and return status + suggestions."""
+def verify_tier_models(
+    tier: str | None = None,
+    max_workers: int = 8,
+    cache_path: Path | None = None,
+    use_cache: bool = True,
+    ttl_seconds: int = 3600,
+) -> list[dict[str, Any]]:
+    """Verify model URLs concurrently for one tier (or all tiers) with optional 1-hour TTL cache."""
+    cache_key = tier or "__all__"
+    if use_cache and cache_path is not None and cache_path.is_file():
+        try:
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            entry = cached.get(cache_key) if isinstance(cached, dict) else None
+            if (
+                isinstance(entry, dict)
+                and (time.time() - float(entry.get("ts", 0))) < ttl_seconds
+                and isinstance(entry.get("results"), list)
+            ):
+                return entry["results"]
+        except (OSError, json.JSONDecodeError, ValueError, TypeError):
+            pass
+
     tiers = [tier] if tier else list(TIER_MODEL_REGISTRY.keys())
     entries = [(t, spec) for t in tiers for spec in get_tier_model_specs(t)]
     unique_urls = {spec["url"] for _, spec in entries}
@@ -474,6 +496,20 @@ def verify_tier_models(tier: str | None = None, max_workers: int = 8) -> list[di
                 "suggestions": suggestions,
             }
         )
+
+    if use_cache and cache_path is not None:
+        try:
+            existing_cache: dict[str, Any] = {}
+            if cache_path.is_file():
+                loaded = json.loads(cache_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    existing_cache = loaded
+            existing_cache[cache_key] = {"ts": time.time(), "results": results}
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(existing_cache, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+
     return results
 
 
@@ -569,6 +605,33 @@ def remove_models_from_ini(
                 target.unlink()
                 deleted.append(fname)
     return deleted
+
+
+def prune_unreferenced_models(
+    existing_path: Path,
+    models_dir: Path,
+    dry_run: bool = False,
+) -> list[str]:
+    """Identify and remove .gguf files in models_dir not referenced by any preset in models.ini."""
+    if not models_dir.is_dir():
+        return []
+
+    referenced: set[str] = set()
+    if existing_path.is_file():
+        cp = configparser.ConfigParser()
+        cp.read(existing_path, encoding="utf-8")
+        for sec in cp.sections():
+            for key in ("model", "mmproj"):
+                if cp.has_option(sec, key):
+                    referenced.add(Path(cp.get(sec, key)).name)
+
+    pruned: list[str] = []
+    for candidate in sorted(models_dir.glob("*.gguf")):
+        if candidate.name not in referenced:
+            if not dry_run:
+                candidate.unlink(missing_ok=True)
+            pruned.append(candidate.name)
+    return pruned
 
 
 def resolve_hf_gguf_repo(

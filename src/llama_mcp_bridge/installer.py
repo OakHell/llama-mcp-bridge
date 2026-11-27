@@ -28,6 +28,14 @@ from llama_mcp_bridge.client_config import (
     _resolve_harness_config_paths,
 )
 from llama_mcp_bridge.config import get_config_home, load_config
+from llama_mcp_bridge.diagnostics import (
+    check_for_update,
+    diff_config_against_defaults,
+    export_merged_config,
+    get_model_info,
+    run_profile_benchmark,
+    run_selftest,
+)
 from llama_mcp_bridge.hardware import detect_hardware
 from llama_mcp_bridge.model_download import (
     _compute_sha256,
@@ -35,6 +43,7 @@ from llama_mcp_bridge.model_download import (
     _download_tier_models,
     _verify_and_finalize_part,
 )
+from llama_mcp_bridge.ollama_import import import_ollama_models
 from llama_mcp_bridge.paths import (
     get_default_workspace,
     register_global_workspace,
@@ -43,6 +52,7 @@ from llama_mcp_bridge.paths import (
 )
 from llama_mcp_bridge.presets import (
     _VALID_PRESETS,
+    TIER_MODEL_REGISTRY,
     generate_models_ini,
     get_tier_model_specs,
     probe_model_metadata,
@@ -170,7 +180,7 @@ def ps_main(json_output: bool = False) -> None:
     console.print(table)
 
 
-def _run_doctor(json_output: bool = False) -> int:
+def _run_doctor(json_output: bool = False, verify_sha: bool = False) -> int:
     """Run an end-to-end diagnostic check and return exit code (0=ok/warn, 1=fail)."""
     from llama_mcp_bridge.bridge import _BUILTIN_TOOL_MAP
 
@@ -265,6 +275,45 @@ def _run_doctor(json_output: bool = False) -> int:
         )
     else:
         _record("GGUF files", "PASS", f"All referenced files present in {cfg.models_dir}{disk_note}")
+
+    if verify_sha and models_ini.is_file():
+        url_by_name = {
+            spec["filename"]: spec["url"]
+            for specs in TIER_MODEL_REGISTRY.values()
+            for spec in specs
+        }
+        sha_mismatches: list[str] = []
+        sha_checked = 0
+        sha_skipped = 0
+        seen_paths: set[Path] = set()
+        cp = configparser.ConfigParser()
+        cp.read(models_ini, encoding="utf-8")
+        for sec in cp.sections():
+            for key in ("model", "mmproj"):
+                if cp.has_option(sec, key):
+                    mp = Path(cp.get(sec, key))
+                    if mp in seen_paths or not mp.is_file():
+                        continue
+                    seen_paths.add(mp)
+                    url = url_by_name.get(mp.name)
+                    if not url:
+                        sha_skipped += 1
+                        continue
+                    ok, _, expected_sha = probe_model_metadata(url)
+                    if not ok or not expected_sha:
+                        sha_skipped += 1
+                        continue
+                    sha_checked += 1
+                    actual_sha = _compute_sha256(mp)
+                    if actual_sha.lower() != expected_sha.lower():
+                        sha_mismatches.append(f"{mp.name} (expected {expected_sha[:12]}, got {actual_sha[:12]})")
+        if sha_mismatches:
+            failed = True
+            _record("GGUF SHA-256", "FAIL", f"Mismatch: {', '.join(sha_mismatches)}")
+        elif sha_checked > 0:
+            _record("GGUF SHA-256", "PASS", f"Verified {sha_checked} file(s) ({sha_skipped} uncurated/no-etag skipped)")
+        else:
+            _record("GGUF SHA-256", "WARN", f"No curated HF SHA-256 headers available ({sha_skipped} skipped)")
 
     if unregistered_presets:
         failed = True
@@ -489,6 +538,8 @@ def main() -> None:
         help="Download curated GGUF models for tier (optionally filter by preset names).",
     )
     parser.add_argument("--verify-models", action="store_true", help="Verify Hugging Face model URLs.")
+    parser.add_argument("--verify-all", action="store_true", help="Run both --verify-models and --doctor.")
+    parser.add_argument("--no-cache", action="store_true", help="Bypass the 1-hour --verify-models TTL cache.")
     parser.add_argument("--max-workers", type=int, default=8, help="Max concurrent workers for --verify-models.")
     parser.add_argument("--tier", type=str, help="Target VRAM tier for --verify-models.")
     parser.add_argument(
@@ -499,7 +550,16 @@ def main() -> None:
     )
     parser.add_argument("--ps", action="store_true", help="Show live server and preset status.")
     parser.add_argument("--doctor", action="store_true", help="Run end-to-end diagnostic checklist.")
-    parser.add_argument("--json", action="store_true", help="Emit machine-parseable JSON output for --doctor or --ps.")
+    parser.add_argument("--verify-sha", action="store_true", help="Re-verify on-disk GGUFs against HF SHA-256 in --doctor.")
+    parser.add_argument("--json", action="store_true", help="Emit machine-parseable JSON output.")
+    parser.add_argument("--profile", action="store_true", help="Benchmark configured presets against a live llama-server.")
+    parser.add_argument("--selftest", action="store_true", help="Run live ask_digest('ping') end-to-end smoke test.")
+    parser.add_argument("--check-update", action="store_true", help="Check Git tags for a newer release.")
+    parser.add_argument("--export-config", action="store_true", help="Print effective merged [*] + [preset] models.ini.")
+    parser.add_argument("--diff-config", action="store_true", help="Diff current models.ini against tier defaults.")
+    parser.add_argument("--model-info", type=str, metavar="PRESET", help="Inspect effective flags and GGUF metadata for a preset.")
+    parser.add_argument("--import-ollama", action="store_true", help="Import Ollama GGUF blobs via symlinks.")
+    parser.add_argument("--ollama-dir", type=str, help="Override Ollama models directory (default: ~/.ollama/models).")
     parser.add_argument("--uninstall", action="store_true", help="Remove binaries, build dirs, and service while preserving models and INIs.")
     parser.add_argument(
         "--configure-client",
@@ -552,36 +612,109 @@ def main() -> None:
         ps_main(json_output=args.json)
         return
     if args.doctor:
-        sys.exit(_run_doctor(json_output=args.json))
+        sys.exit(_run_doctor(json_output=args.json, verify_sha=args.verify_sha))
+    if args.selftest:
+        sys.exit(run_selftest(json_output=args.json))
+    if args.profile:
+        sys.exit(run_profile_benchmark(load_config(), json_output=args.json))
+    if args.check_update:
+        current, latest, has_update = check_for_update()
+        if args.json:
+            print(json.dumps({"current": current, "latest": latest, "update_available": has_update}, indent=2))
+        elif has_update:
+            print(f"Update available: {current} -> {latest}")
+        else:
+            print(f"Up to date ({current}).")
+        return
+    if args.export_config:
+        cfg = load_config()
+        print(export_merged_config(Path(cfg.models_ini)))
+        return
+    if args.diff_config:
+        cfg = load_config()
+        diff_text = diff_config_against_defaults(
+            Path(cfg.models_ini), detect_hardware(), cfg.models_dir, cfg.residency
+        )
+        print(diff_text or "No differences from tier defaults.")
+        return
+    if args.model_info:
+        cfg = load_config()
+        info = get_model_info(Path(cfg.models_ini), args.model_info)
+        if args.json:
+            print(json.dumps(info, indent=2))
+        else:
+            console = Console()
+            table = Table(title=f"Model Info: {args.model_info}")
+            table.add_column("Flag", style="bold")
+            table.add_column("Value")
+            for k, v in info["flags"].items():
+                table.add_row(k, str(v))
+            console.print(table)
+            if info["gguf"]:
+                meta = info["gguf"]
+                print(
+                    f"GGUF: arch={meta['architecture']} layers={meta['n_layers']} "
+                    f"max_ctx={meta['max_context_length']} heads_kv={meta['head_count_kv']}"
+                )
+        return
+    if args.import_ollama:
+        cfg = load_config()
+        ollama_root = Path(args.ollama_dir).expanduser() if args.ollama_dir else None
+        report = import_ollama_models(
+            ollama_dir=ollama_root,
+            models_dir=Path(cfg.models_dir),
+            models_ini=Path(cfg.models_ini),
+            profile=detect_hardware(),
+            residency=cfg.residency,
+            dry_run=args.dry_run,
+        )
+        for warn in report.warnings:
+            print(f"WARNING: {warn}")
+        for entry in report.imported:
+            prefix = "[DRY-RUN] Would import" if args.dry_run else "Imported"
+            print(f"{prefix} {entry.preset_name} -> {entry.symlink_path} (ctx={entry.ctx_size}, ngl={entry.n_gpu_layers})")
+        if not report.imported:
+            print("No Ollama GGUF models imported.")
+        return
     if args.configure_client:
         _configure_client(args.configure_client, apply=args.apply, dry_run=args.dry_run)
         return
     if args.install_skill is not None:
         _install_skill(args.install_skill, symlink=args.skill_link, dry_run=args.dry_run)
         return
-    if args.verify_models:
+    if args.verify_models or args.verify_all:
+        verify_failed = False
         if args.dry_run:
             target_tier = args.tier or "all"
             print(f"[DRY-RUN] Would verify Hugging Face model URLs for tier={target_tier} (max_workers={args.max_workers}).")
-            return
-        console = Console()
-        results = verify_tier_models(args.tier, max_workers=args.max_workers)
-        table = Table(title="Hugging Face Model Verification")
-        table.add_column("Tier")
-        table.add_column("Filename")
-        table.add_column("Status")
-        table.add_column("Details")
-        any_missing = False
-        for item in results:
-            if item["ok"]:
-                size_mb = f"{item['size_bytes'] / (1024**2):.1f} MB" if item["size_bytes"] else "OK"
-                table.add_row(item["tier"], item["filename"], "[green]OK[/green]", size_mb)
-            else:
-                any_missing = True
-                sugg = ", ".join(s["id"] for s in item["suggestions"]) or "none"
-                table.add_row(item["tier"], item["filename"], "[red]MISSING[/red]", f"Try: {sugg}")
-        console.print(table)
-        if any_missing:
+        else:
+            cfg = load_config()
+            cache_path = Path(cfg.workspace) / ".cache" / "verify_models.json"
+            console = Console()
+            results = verify_tier_models(
+                args.tier,
+                max_workers=args.max_workers,
+                cache_path=cache_path,
+                use_cache=not args.no_cache,
+            )
+            table = Table(title="Hugging Face Model Verification")
+            table.add_column("Tier")
+            table.add_column("Filename")
+            table.add_column("Status")
+            table.add_column("Details")
+            for item in results:
+                if item["ok"]:
+                    size_mb = f"{item['size_bytes'] / (1024**2):.1f} MB" if item["size_bytes"] else "OK"
+                    table.add_row(item["tier"], item["filename"], "[green]OK[/green]", size_mb)
+                else:
+                    verify_failed = True
+                    sugg = ", ".join(s["id"] for s in item["suggestions"]) or "none"
+                    table.add_row(item["tier"], item["filename"], "[red]MISSING[/red]", f"Try: {sugg}")
+            console.print(table)
+        if args.verify_all:
+            doc_rc = 0 if args.dry_run else _run_doctor(json_output=args.json, verify_sha=args.verify_sha)
+            sys.exit(1 if (verify_failed or doc_rc != 0) else 0)
+        if verify_failed:
             sys.exit(1)
         return
 

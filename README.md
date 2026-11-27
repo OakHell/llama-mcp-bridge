@@ -92,12 +92,19 @@ uv run pytest -v
 | `-y`, `--yes` | Auto-confirms `llama-server` installation when undetected. |
 | `--download-models [PRESET ...]` | Downloads curated GGUF starter-pack models for your detected tier, or only specific presets (e.g. `--download-models digest` for lightweight/CPU-only setups). |
 | `--presets PRESET [PRESET ...]` | Limits `models.ini` generation to the specified specialist presets (default: all 9 presets). |
-| `--verify-models` | Verifies Hugging Face URLs for `--tier` (or all tiers) and suggests live GGUF alternatives on 404. |
+| `--verify-models` | Verifies Hugging Face URLs for `--tier` (or all tiers) using a 1-hour cache (`--no-cache` to bypass) and suggests live GGUF alternatives on 404. |
+| `--verify-all` | Runs `--verify-models` and `--doctor` together as a single deployment check. |
 | `--tier` | Target VRAM tier (`6gb`, `8gb`, `12gb`, `16gb`, `24gb+`) for `--verify-models`. |
 | `--residency` | Memory residency profile (`stingy`, `moderate`, `snappy`; default `moderate`). |
 | `--models-dir` | Custom directory for GGUF model files (defaults to `<workspace>/models`). |
-| `--ps` | Shows live server health, active residency, and loaded/idle presets (also `llama-mcp-ps`). |
-| `--doctor` | Runs an end-to-end diagnostic check of configs, `llama-server`, GGUF files, and `/health`. |
+| `--import-ollama` | Imports Ollama manifests/blobs into `<workspace>/models` via zero-copy symlinks and GGUF header auto-tuning (`--ollama-dir` to override `~/.ollama/models`). |
+| `--ps` | Shows live server health, active residency, and loaded/idle presets (also `llama-mcp-ps`, supports `--json`). |
+| `--doctor` | Runs an end-to-end diagnostic check of configs, `llama-server`, GGUF files, preset tools, and `/health` (supports `--verify-sha` and `--json`). |
+| `--profile` | Benchmarks configured presets against a live `llama-server` and reports tokens/sec and latency (supports `--json`). |
+| `--selftest` | Runs a live `ask_digest("ping")` smoke test against `llama-server` (supports `--json`). |
+| `--check-update` | Queries Git tags on GitHub to check for a newer SemVer release (supports `--json`). |
+| `--export-config` / `--diff-config` | Prints effective merged `[*]` + `[preset]` `models.ini`, or diffs `models.ini` against tier defaults. |
+| `--model-info PRESET` | Displays effective merged `llama-server` flags and parsed GGUF metadata for a preset (supports `--json`). |
 | `--uninstall` | Removes managed `bin/`, build trees, and background service while preserving `.ini` configs and `.gguf` models (supports `--dry-run` and `--yes`). |
 | `--configure-client` | Prints ready-to-paste `mcpServers` JSON and official setup docs for your coding harness (pass `--apply` to merge-write `"local-ai"` directly into the harness config). |
 | `--tui` | Launches the interactive `rich` TUI setup wizard (also auto-launched on bare `llama-mcp-install` in a TTY). |
@@ -115,7 +122,10 @@ Manage, add, or remove specialist presets anytime after installation without re-
 - **Add Presets:** `llama-mcp-models add digest coder` (or `--add`) merges the requested presets into `models.ini` without duplicating existing `[section]` headers and downloads their GGUFs.
 - **Remove Presets Safely:** `llama-mcp-models remove vision` (or `--remove`) prompts for confirmation (`-y` / `--yes` skips the prompt; `--dry-run` previews changes), removes the preset sections from `models.ini`, and only deletes `.gguf` / `mmproj` files on disk if no remaining preset in `models.ini` references them.
 - **Custom Models (`--hf` / `--file` & `--tune-mode`):** `llama-mcp-models add my_model --hf <owner>/<repo>[:<quant-or-filename>]` (with automatic `mmproj` detection, `X-Linked-ETag` SHA-256 checksum verification, and resumable `.part` downloads) or `--file <path/to/model.gguf>` (`--mmproj` optional) inspects GGUF binary headers to auto-tune `n-gpu-layers` and `ctx-size` (`--tune-mode conservative|approximate`, default `conservative`), prints a heuristic tuning & client-restart notice, and exposes the preset via `ask_preset` or dynamically registered `ask_<preset>` tools.
-- **Self-Healing URL Verification:** `llama-mcp-install --verify-models` checks Hugging Face starter-pack URLs concurrently and suggests live GGUF alternatives on 404.
+- **Self-Healing URL Verification:** `llama-mcp-install --verify-models` checks Hugging Face starter-pack URLs concurrently (with a 1-hour TTL cache in `<workspace>/.cache/verify_models.json`, bypassable with `--no-cache`) and suggests live GGUF alternatives on 404.
+- **Zero-Copy Ollama Import (`--import-ollama`):** `llama-mcp-install --import-ollama` or `llama-mcp-models --import-ollama` (optional `--ollama-dir`) walks `~/.ollama/models/manifests/**`, **symlinks** (never copies) GGUF and `mmproj` blobs into `<workspace>/models/`, and runs `parse_gguf_header` to auto-tune `models.ini` (rejecting split multi-blob models and warning on safetensors-backed models).
+- **Prune Unreferenced GGUFs (`--prune`):** `llama-mcp-models --prune` removes `.gguf` files in `models_dir` no longer referenced by any `[preset]` in `models.ini` (respecting `--dry-run` and `-y`/`--yes`).
+- **Standalone Config Validation (`llama-mcp-config`):** `llama-mcp-config check <path>` validates `bridge.ini` or `models.ini` syntax, required keys, and referenced file paths standalone.
 
 ## Configuration (`LLAMA_MCP_HOME`, `bridge.ini` & `models.ini`)
 

@@ -19,11 +19,13 @@ from llama_mcp_bridge.config import load_config
 from llama_mcp_bridge.gguf_header import parse_gguf_header, recommend_gguf_tuning
 from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
 from llama_mcp_bridge.installer import _download_spec_list, _download_tier_models
+from llama_mcp_bridge.ollama_import import import_ollama_models
 from llama_mcp_bridge.presets import (
     _VALID_PRESETS,
     get_tier_model_specs,
     merge_custom_preset_ini,
     merge_models_ini,
+    prune_unreferenced_models,
     remove_models_from_ini,
     resolve_hf_gguf_repo,
 )
@@ -326,6 +328,9 @@ def main() -> None:
         metavar="NAME",
         help="Custom MCP tool/section name (e.g. qwen_coder -> [qwen_coder] / ask_qwen_coder).",
     )
+    parser.add_argument("--import-ollama", action="store_true", help="Import Ollama GGUF blobs via symlinks.")
+    parser.add_argument("--ollama-dir", type=str, help="Override Ollama models directory (default: ~/.ollama/models).")
+    parser.add_argument("--prune", action="store_true", help="Remove unreferenced .gguf files in models_dir.")
     parser.add_argument("-y", "--yes", action="store_true", help="Confirm destructive removals.")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files.")
     args = parser.parse_args()
@@ -341,6 +346,42 @@ def main() -> None:
 
     add_targets = args.add_flag or (args.presets if args.action == "add" else None)
     remove_targets = args.remove_flag or (args.presets if args.action == "remove" else None)
+
+    if args.import_ollama:
+        ollama_root = Path(args.ollama_dir).expanduser() if args.ollama_dir else None
+        report = import_ollama_models(
+            ollama_dir=ollama_root,
+            models_dir=models_dir,
+            models_ini=models_ini,
+            profile=profile,
+            residency=cfg.residency,
+            dry_run=args.dry_run,
+            tune_mode=args.tune_mode,
+        )
+        for warn in report.warnings:
+            print(f"WARNING: {warn}")
+        for entry in report.imported:
+            prefix = "[DRY-RUN] Would import" if args.dry_run else "Imported"
+            print(f"{prefix} {entry.preset_name} -> {entry.symlink_path} (ctx={entry.ctx_size}, ngl={entry.n_gpu_layers})")
+        if not report.imported:
+            print("No Ollama GGUF models imported.")
+        return
+
+    if args.prune:
+        candidates = prune_unreferenced_models(models_ini, models_dir, dry_run=True)
+        if not candidates:
+            print("No unreferenced .gguf files to prune.")
+            return
+        if args.dry_run:
+            for fname in candidates:
+                print(f"[DRY-RUN] Would prune unreferenced file: {models_dir / fname}")
+            return
+        if not args.yes and (not sys.stdin.isatty() or not Confirm.ask(f"Delete {len(candidates)} unreferenced GGUF file(s)?", default=False)):
+            print("Prune cancelled.")
+            return
+        deleted = prune_unreferenced_models(models_ini, models_dir, dry_run=False)
+        print(f"Pruned {len(deleted)} unreferenced file(s): {', '.join(deleted)}")
+        return
 
     if args.action == "list":
         _print_models_list(profile, models_ini, models_dir)

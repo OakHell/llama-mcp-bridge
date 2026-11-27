@@ -59,25 +59,25 @@
 ## Features
 - [ ] **F1 — Optional streaming support:** Add opt-in streaming in `query_llama` and MCP tool handlers (`"stream": True`).
 - [ ] **F2 — Hot-reload `models.ini` via `notifications/tools/list_changed`:** Emit MCP tool-list change notifications when `models.ini` updates without requiring a client restart.
-- [ ] **F3 — `--verify-all` CLI flag:** Combine `--verify-models` and `--doctor` into a single deployment check.
-- [ ] **F4 — 1-hour TTL cache for Hugging Face URL verification:** Cache `verify_tier_models` results locally for 1 hour to reduce repeated HF API calls.
-- [ ] **F5 — `--import-ollama` manifest parser & blob symlinker (`ollama_import.py`):** Walk `~/.ollama/models/manifests/**`, parse JSON layers (`application/vnd.ollama.image.model` and `.projector`), **symlink** (never copy) matching `blobs/sha256-<hash>` files into `<workspace>/models/<model>-<tag>.gguf`, run `parse_gguf_header` on each symlinked blob to auto-tune `models.ini`, reject split multi-blob models clearly, and catch `Invalid GGUF magic` on safetensors-backed Ollama models with a warning.
+- [x] **F3 — `--verify-all` CLI flag:** Combine `--verify-models` and `--doctor` into a single deployment check.
+- [x] **F4 — 1-hour TTL cache for Hugging Face URL verification:** Cache `verify_tier_models` results locally for 1 hour to reduce repeated HF API calls.
+- [x] **F5 — `--import-ollama` manifest parser & blob symlinker (`ollama_import.py`):** Walk `~/.ollama/models/manifests/**`, parse JSON layers (`application/vnd.ollama.image.model` and `.projector`), **symlink** (never copy) matching `blobs/sha256-<hash>` files into `<workspace>/models/<model>-<tag>.gguf`, run `parse_gguf_header` on each symlinked blob to auto-tune `models.ini`, reject split multi-blob models clearly, and catch `Invalid GGUF magic` on safetensors-backed Ollama models with a warning.
 - [ ] **F6 — `ask_batch` parallel prompt tool:** Batch N prompts against the same preset when `parallel > 1`.
 - [ ] **F7 — MCP `notifications/progress` for long inference:** Emit progress notifications during calls exceeding 30 seconds.
-- [ ] **F8 — `--export-config` and `--diff-config`:** Print effective merged `[*]` + `[preset]` config and diff current `models.ini` against freshly generated tier defaults.
-- [ ] **F9 — `--doctor --verify-sha`:** Re-verify downloaded GGUF files on disk against Hugging Face `X-Linked-ETag` SHA-256 headers.
-- [ ] **F10 — `llama-mcp-models --prune`:** Remove unreferenced `.gguf` and `mmproj` files in `models_dir` not claimed by any `[preset]` in `models.ini`.
-- [ ] **F11 — `--profile` benchmarking mode:** Run a standard prompt suite across configured presets and report tokens/sec, latency, and VRAM usage.
+- [x] **F8 — `--export-config` and `--diff-config`:** Print effective merged `[*]` + `[preset]` config and diff current `models.ini` against freshly generated tier defaults.
+- [x] **F9 — `--doctor --verify-sha`:** Re-verify downloaded GGUF files on disk against Hugging Face `X-Linked-ETag` SHA-256 headers.
+- [x] **F10 — `llama-mcp-models --prune`:** Remove unreferenced `.gguf` and `mmproj` files in `models_dir` not claimed by any `[preset]` in `models.ini`.
+- [x] **F11 — `--profile` benchmarking mode:** Run a standard prompt suite across configured presets and report tokens/sec, latency, and VRAM usage.
 - [ ] **F12 — Optional `--api-key` auth for `llama-server`:** Wire `llama-server --api-key` through `bridge.ini` and `Authorization: Bearer` headers.
 - [ ] **F13 — Prometheus `/metrics` sidecar endpoint:** Expose request counts, latency histograms, model load events, and OOM counts.
 - [ ] **F14 — Per-preset access control (`allowed_presets`):** Allow restricting callable presets per `bridge.ini` profile.
 - [ ] **F15 — Named multi-workspace support (`--register-name`):** Support multiple named workspace pointers alongside the default global workspace.
-- [ ] **F16 — `--selftest` end-to-end inference probe:** Run a live `ask_digest("ping")` smoke test against `llama-server` and verify a non-empty reply.
+- [x] **F16 — `--selftest` end-to-end inference probe:** Run a live `ask_digest("ping")` smoke test against `llama-server` and verify a non-empty reply.
 - [ ] **F17 — `--warmup` preset preloading:** Optionally preload configured presets on bridge/service startup.
-- [ ] **F18 — `llama-mcp-config check <path>` CLI:** Validate `bridge.ini` and `models.ini` syntax/paths standalone.
-- [ ] **F19 — `--model-info <preset>` CLI flag:** Display effective merged `llama-server` flags (`[*]` + `[preset]`) for a single preset.
+- [x] **F18 — `llama-mcp-config check <path>` CLI:** Validate `bridge.ini` and `models.ini` syntax/paths standalone.
+- [x] **F19 — `--model-info <preset>` CLI flag:** Display effective merged `llama-server` flags (`[*]` + `[preset]`) for a single preset.
 - [ ] **F20 — GPG / sigstore signature verification for downloaded `llama-server` binaries.**
-- [ ] **F21 — `--check-update` via Git tags:** Query `git ls-remote --tags https://github.com/OakHell/llama-mcp-bridge`, parse SemVer tags, and compare against installed `pyproject.toml` version.
+- [x] **F21 — `--check-update` via Git tags:** Query `git ls-remote --tags https://github.com/OakHell/llama-mcp-bridge`, parse SemVer tags, and compare against installed `pyproject.toml` version.
 - [ ] **F22 — Optional per-call `timeout_s` override** on MCP tool invocations.
 
 ## Chores
@@ -126,9 +126,9 @@
 - [x] **T20:** Unit test `_run_doctor` with `auto_spawn = false` and server offline (expects `WARN`, not `FAIL` or `Standby`).
 - [x] **T21:** Unit test `_uninstall_bridge` across `launchd`, Windows `schtasks`, `systemd`, and `crontab`.
 - [x] **T22:** Integration test running `--configure-client --apply` followed by MCP `initialize` and `tools/list`.
-- [ ] **T23:** Optional end-to-end test against a real `llama-server` binary.
+- [x] **T23:** Optional end-to-end test against a real `llama-server` binary.
 - [x] **T24:** Add real FreeBSD VM CI job (`vmactions/freebsd-vm` on `ubuntu-latest` with `cache-after-prepare: true`) running full `pytest` suite and `llama-mcp-install` dry-runs.
-- [ ] **T25:** Optional end-to-end `--selftest` on FreeBSD VM against pkg-installed `llama.cpp` (`system-bin` mode).
+- [x] **T25:** Optional end-to-end `--selftest` on FreeBSD VM against pkg-installed `llama.cpp` (`system-bin` mode).
 
 ## Documentation Gaps
 - [x] **D1:** Add a 3–4 sentence **Design Stance** paragraph in `README.md` right after the intro (Ollama ease + `llama.cpp` transparency; hardware/geometry-derived tuning; agency-free specialist boundary; small composable primitives).

@@ -56,6 +56,10 @@ Non-login shells often omit `~/.local/bin` (POSIX) or `%USERPROFILE%\.local\bin`
 
 ### Adding / Tuning Models
 - Add curated presets: `llama-mcp-models add <preset>`
+- Import existing Ollama GGUF models via zero-copy symlinks and GGUF header auto-tuning:
+  ```bash
+  llama-mcp-models --import-ollama
+  ```
 - Add any Hugging Face or local GGUF model with header-based KV-cache auto-tuning and optional `--tool-name`:
   ```bash
   llama-mcp-models add my_coder --hf <owner>/<repo>:<quant> --tune-mode conservative --tool-name qwen_coder
@@ -66,10 +70,11 @@ Non-login shells often omit `~/.local/bin` (POSIX) or `%USERPROFILE%\.local\bin`
 ### Black-Box Diagnostic Decision Tree
 Always run black-box CLI diagnostics before inspecting source code or logs:
 
-1. **`llama-mcp-install --doctor`** — Checks `bridge.ini` & `models.ini`, `llama-server` binary permissions, GGUF files, and `/health` (`Standby` when `auto_spawn = true`).
-2. **`llama-mcp-ps`** — Shows `ONLINE` / `STANDBY (auto-spawn)` / `OFFLINE`, active `residency`, VRAM tier, and `LOADED` / `IDLE` presets.
-3. **`llama-mcp-install --verify-models`** — Checks Hugging Face starter-pack URLs and suggests live GGUF alternatives on 404.
-3. **Common Failures:**
+1. **`llama-mcp-install --verify-all`** (or `--doctor`) — Checks Hugging Face URLs, `bridge.ini` & `models.ini`, `llama-server` binary, GGUF files (`--verify-sha` optional), and `/health` (`Standby` when `auto_spawn = true`).
+2. **`llama-mcp-install --selftest`** — Runs a live `ask_digest("ping")` smoke test against `llama-server`.
+3. **`llama-mcp-ps`** — Shows `ONLINE` / `STANDBY (auto-spawn)` / `OFFLINE`, active `residency`, VRAM tier, and `LOADED` / `IDLE` presets.
+4. **`llama-mcp-install --verify-models`** — Checks Hugging Face starter-pack URLs and suggests live GGUF alternatives on 404.
+5. **Common Failures:**
    - *Missing GGUF files*: Run `llama-mcp-models add <preset>` or `llama-mcp-install --download-models`.
    - *`Preset '<name>' is not configured in models.ini`*: Run `llama-mcp-models add <name>`.
    - *VRAM OOM or cold-swap timeout*: Set `residency = stingy` or `fallback_on_oom = true` in `bridge.ini`, or re-run `llama-mcp-models add` with `--tune-mode conservative`.
