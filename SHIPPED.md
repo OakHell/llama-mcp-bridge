@@ -52,3 +52,6 @@ Split `installer.py` into `service_install.py`, `model_download.py`, `client_con
 
 ### `v0.11.0` — Ollama Import, Diagnostics & Config Introspection (Shipped)
 Added zero-copy Ollama manifest parsing and GGUF/mmproj blob symlinking (`ollama_import.py`, `--import-ollama` / `--ollama-dir`, `F5`) with GGUF header auto-tuning, split-blob rejection, and safetensors warnings. Shipped `--verify-all` (`F3`), 1-hour TTL caching for `--verify-models` (`F4`, `--no-cache`), `--doctor --verify-sha` (`F9`), `llama-mcp-models --prune` (`F10`), `--profile` benchmarking (`F11`), `--selftest` (`F16`), `llama-mcp-config check <path>` (`F18`, `config_cli.py`), `--export-config` / `--diff-config` (`F8`), `--model-info` (`F19`), `--check-update` (`F21`), opt-in `@pytest.mark.live_server` testing (`T23`), and optional FreeBSD `--selftest` CI wiring (`T25`).
+
+### `v0.11.0.post1` — Windows NTFS `load_config()` Cache-Key Fix (Shipped)
+Included `bridge.ini` raw file bytes alongside `st_mtime_ns` in `load_config()`'s cache key (`config.py`) so rapid sub-15.6 ms overwrites on Windows NTFS never return stale cached `BridgeConfig` instances, and added a regression test pinning identical `st_mtime_ns` across mutations.

@@ -102,24 +102,30 @@ def _load_ini_config(config_path: Path) -> dict[str, str]:
     return config_dict
 
 
-_CONFIG_CACHE: dict[tuple[str, int | None, str], BridgeConfig] = {}
+_CONFIG_CACHE: dict[tuple[str, int | None, bytes | None, str], BridgeConfig] = {}
 
 
 def load_config(explicit_dir: Path | str | None = None) -> BridgeConfig:
-    """Load and merge configuration from bridge.ini and defaults (mtime-cached)."""
+    """Load and merge configuration from bridge.ini and defaults (mtime + content-cached)."""
     config_home = get_config_home(explicit_dir=explicit_dir)
     bridge_ini_path = config_home / "bridge.ini"
     try:
-        ini_mtime_ns: int | None = bridge_ini_path.stat().st_mtime_ns if bridge_ini_path.is_file() else None
+        if bridge_ini_path.is_file():
+            ini_mtime_ns: int | None = bridge_ini_path.stat().st_mtime_ns
+            ini_bytes: bytes | None = bridge_ini_path.read_bytes()
+        else:
+            ini_mtime_ns = None
+            ini_bytes = None
     except OSError:
         ini_mtime_ns = None
+        ini_bytes = None
 
-    cache_key = (str(config_home), ini_mtime_ns, sys.platform)
+    cache_key = (str(config_home), ini_mtime_ns, ini_bytes, sys.platform)
     if cache_key in _CONFIG_CACHE:
         return replace(_CONFIG_CACHE[cache_key])
 
     config_dict: dict[str, str] = {}
-    if ini_mtime_ns is not None:
+    if ini_bytes is not None:
         config_dict.update(_load_ini_config(bridge_ini_path))
 
     config = BridgeConfig()

@@ -300,3 +300,25 @@ def test_t23_live_llama_server_version_smoke() -> None:
 
     res = subprocess.run([server_bin, "--version"], capture_output=True, text=True, timeout=10, check=False)
     assert res.returncode == 0
+
+
+def test_load_config_invalidates_cache_when_mtime_ns_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ensure sub-tick Windows NTFS overwrites with identical st_mtime_ns still re-parse."""
+    from llama_mcp_bridge.config import load_config
+
+    cfg_home = tmp_path / "ntfs_cfg"
+    cfg_home.mkdir()
+    ini_path = cfg_home / "bridge.ini"
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(cfg_home))
+
+    fixed_mtime_ns = 1_700_000_000_000_000_000
+    ini_path.write_text("[bridge]\nresidency = snappy\n", encoding="utf-8")
+    os.utime(ini_path, ns=(fixed_mtime_ns, fixed_mtime_ns))
+    assert load_config().residency == "snappy"
+
+    ini_path.write_text("[bridge]\nresidency = invalid_mode\n", encoding="utf-8")
+    os.utime(ini_path, ns=(fixed_mtime_ns, fixed_mtime_ns))
+    with pytest.raises(ValueError, match="Invalid residency profile"):
+        load_config()
