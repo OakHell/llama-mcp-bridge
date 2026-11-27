@@ -903,7 +903,7 @@ wheels = [
 
 [[package]]
 name = "llama-mcp-bridge"
-version = "0.13.0"
+version = "0.14.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
@@ -927,6 +927,7 @@ requires-dist = [
     { name = "requests" },
     { name = "rich" },
 ]
+provides-extras = ["enterprise"]
 
 [package.metadata.requires-dev]
 dev = [

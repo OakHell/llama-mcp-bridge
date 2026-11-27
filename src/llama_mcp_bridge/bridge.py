@@ -1024,6 +1024,11 @@ def main() -> None:
     parser.add_argument("--workspace-name", type=str, help="Target a registered named workspace.")
     parser.add_argument("--metrics", action="store_true", help="Enable Prometheus /metrics sidecar HTTP server (default port 9090).")
     parser.add_argument("--metrics-port", type=int, default=0, help="Port for Prometheus /metrics sidecar HTTP server.")
+    parser.add_argument("--enterprise", action="store_true", help="Enable opt-in [enterprise] features (audit log, probes, multi-tenant).")
+    parser.add_argument("--audit-log", type=str, default=None, help="Path to rotating JSONL audit log (requires --enterprise).")
+    parser.add_argument("--watchdog", action="store_true", help="Enable systemd sd_notify watchdog heartbeat (requires --enterprise).")
+    parser.add_argument("--shared-models-dir", type=str, default=None, help="Shared read-only GGUF directory (requires --enterprise).")
+    parser.add_argument("--tenant", type=str, default=None, help="Tenant identifier for isolated workspace (requires --enterprise).")
     parser.add_argument(
         "--warmup",
         nargs="?",
@@ -1033,16 +1038,29 @@ def main() -> None:
         help="Comma-separated presets to preload asynchronously on startup.",
     )
     args, _ = parser.parse_known_args()
+    if args.enterprise:
+        os.environ["LLAMA_MCP_ENTERPRISE"] = "1"
+    if args.tenant:
+        os.environ["LLAMA_MCP_TENANT"] = args.tenant
     if args.workspace_dir or args.workspace_name:
         os.environ["LLAMA_MCP_HOME"] = str(
             resolve_workspace(args.workspace_dir, workspace_name=args.workspace_name)
         )
     cfg = load_config()
+    if (args.audit_log or args.watchdog or args.shared_models_dir or args.tenant) and not (
+        args.enterprise or cfg.enterprise_mode
+    ):
+        parser.error("Enterprise flags (--audit-log, --watchdog, --shared-models-dir, --tenant) require --enterprise or enterprise_mode = true.")
     configure_logging(args.log_level, args.log_format or cfg.log_format)
     _register_configured_tools()
     metrics_port = args.metrics_port or cfg.metrics_port or (9090 if args.metrics else 0)
     if metrics_port > 0:
-        start_metrics_server(metrics_port, METRICS, host=cfg.host)
+        start_metrics_server(metrics_port, METRICS, host=cfg.host, enterprise_mode=cfg.enterprise_mode)
+    if cfg.enterprise_mode and args.watchdog:
+        from llama_mcp_bridge.enterprise.probes import sd_notify, start_watchdog_loop
+
+        sd_notify("READY=1")
+        start_watchdog_loop()
     warmup_list: list[str] | None = None
     if args.warmup is not None:
         warmup_list = [p.strip() for p in args.warmup.split(",") if p.strip()] or list(cfg.warmup_presets)

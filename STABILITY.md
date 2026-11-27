@@ -22,3 +22,5 @@
    - `models.ini` delegates `llama-server` preset flags verbatim and is preserved across upgrades.
 4. **MCP Tool Signatures:**
    - Core specialist tools (`ask_digest`, `ask_coder_fast`, `ask_coder`, `ask_coder_long`, `ask_vision`, `ask_vision_deep`, `ask_reasoner`, `ask_analyst`, `ask_generalist`, `ask_preset`, `ask_batch`, `get_bridge_status`) maintain backwards-compatible parameter names and defaults.
+5. **Opt-In `[enterprise]` Extra — Provisional (Unvalidated in Production):**
+   - The `[enterprise]` extra and its flags/endpoints (`--enterprise`, `--audit-log`, `/livez`, `/readyz`, `--shared-models-dir`, `--tenant`) are **Provisional (Unvalidated in Production)** until field deployment feedback is collected.

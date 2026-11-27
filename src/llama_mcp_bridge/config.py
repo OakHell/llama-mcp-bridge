@@ -44,6 +44,13 @@ class BridgeConfig:
     auto_spawn: bool = True
     residency: str = "moderate"
     fallback_on_oom: bool = False
+    enterprise_mode: bool = False
+    audit_enabled: bool = False
+    audit_log: str = ""
+    audit_max_bytes: int = 10_485_760
+    audit_backups: int = 5
+    shared_models_dir: str = ""
+    tenant: str = ""
     allowed_presets: tuple[str, ...] = ()
     warmup_presets: tuple[str, ...] = ()
     startup_timeout_seconds: float = 30.0
@@ -113,7 +120,7 @@ def _load_ini_config(config_path: Path) -> dict[str, str]:
     return config_dict
 
 
-_CONFIG_CACHE: dict[tuple[str, int | None, bytes | None, str, str], BridgeConfig] = {}
+_CONFIG_CACHE: dict[tuple[str, int | None, bytes | None, str, str, str, str], BridgeConfig] = {}
 
 
 def load_config(explicit_dir: Path | str | None = None) -> BridgeConfig:
@@ -132,7 +139,9 @@ def load_config(explicit_dir: Path | str | None = None) -> BridgeConfig:
         ini_bytes = None
 
     env_api_key = os.environ.get("LLAMA_MCP_API_KEY", "").strip()
-    cache_key = (str(config_home), ini_mtime_ns, ini_bytes, sys.platform, env_api_key)
+    env_enterprise = os.environ.get("LLAMA_MCP_ENTERPRISE", "").strip()
+    env_tenant = os.environ.get("LLAMA_MCP_TENANT", "").strip()
+    cache_key = (str(config_home), ini_mtime_ns, ini_bytes, sys.platform, env_api_key, env_enterprise, env_tenant)
     if cache_key in _CONFIG_CACHE:
         return replace(_CONFIG_CACHE[cache_key])
 
@@ -165,6 +174,15 @@ def load_config(explicit_dir: Path | str | None = None) -> BridgeConfig:
     env_api_key = os.environ.get("LLAMA_MCP_API_KEY", "").strip()
     if env_api_key:
         config.api_key = env_api_key
+    if env_enterprise.lower() in ("1", "true", "yes", "on"):
+        config.enterprise_mode = True
+    if env_tenant:
+        config.tenant = env_tenant
+
+    if (config.audit_enabled or config.audit_log or config.shared_models_dir or config.tenant) and not config.enterprise_mode:
+        raise ValueError(
+            "Enterprise features (audit_enabled, audit_log, shared_models_dir, tenant) require --enterprise or enterprise_mode = true."
+        )
 
     if config.residency:
         config.residency = config.residency.strip().lower()

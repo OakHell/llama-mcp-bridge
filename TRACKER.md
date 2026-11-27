@@ -165,15 +165,15 @@
 ## Deferred / Long-Term (Enterprise Positioning)
 - [x] **E1:** Structured JSON logging mode (`--log-format json`).
 - [x] **E2:** Prometheus `/metrics` sidecar endpoint (`--metrics`).
-- [ ] **E3:** Rotating JSONL audit log of tool invocations.
+- [x] **E3:** Rotating JSONL audit log of tool invocations.
 - [x] **E4:** Config schema versioning and `--migrate-config`.
 - [x] **E5:** CycloneDX SBOM generation (`uv export`) per release tag.
 - [x] **E6:** Sigstore / cosign release artifact signing.
-- [ ] **E7:** Readiness vs. liveness healthcheck probes (`systemd` `WatchdogSec` / Kubernetes).
+- [x] **E7:** Readiness vs. liveness healthcheck probes (`systemd` `WatchdogSec` / Kubernetes).
 - [x] **E8:** Formal SemVer CLI/tool stability policy.
 - [x] **E9:** Exponential backoff and circuit breaker for transient GitHub/Hugging Face `5xx` errors.
 - [x] **E10:** Explicit resource-exhaustion handling (`EMFILE`, disk-full `ENOSPC`, thread limits).
-- [ ] **E11:** Multi-user / multi-tenant shared workspace isolation.
+- [x] **E11:** Multi-user / multi-tenant shared workspace isolation.
 - [x] **E12:** Fault-injection chaos suite (network partition, disk full, port conflict, mid-download kill).
 
 ## Retracted / Not-a-Bug Ledger (Reference Only)

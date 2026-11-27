@@ -4,7 +4,7 @@ requires = ["hatchling"]
 
 [project]
 name = "llama-mcp-bridge"
-version = "0.13.0"
+version = "0.14.0"
 description = "Hardware-aware local LLM MCP bridge powered by llama.cpp router mode"
 readme = "README.md"
 license = { text = "MIT" }
@@ -22,6 +22,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Typing :: Typed",
 ]
+
+[project.optional-dependencies]
+enterprise = []
 
 [project.urls]
 Homepage = "https://github.com/OakHell/llama-mcp-bridge"
