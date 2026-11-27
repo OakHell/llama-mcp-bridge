@@ -43,4 +43,6 @@ Hardened `_extract_archive()` against Zip Slip / Tar path traversal, symlink esc
 
 ### `v0.9.0.post1` — FreeBSD CI Caching & `--install-service --dry-run` Fix (Shipped)
 Allowed `llama-mcp-install --install-service --dry-run` to print the `@reboot` crontab preview without a pre-installed `llama-server` binary while keeping the strict `ValueError` guard for `dry_run=False`, and enabled `cache-after-prepare: true` on the FreeBSD 15 VM CI job (`T24`).
-Hardened `_extract_archive()` against Zip Slip / Tar path traversal, symlink escapes, and oversized/zip-bomb archives (`S1`, `S2`, `M7`), added 64-bit Windows display-adapter registry VRAM probing (`S3`), enforced absolute-path `@reboot` crontab validation (`S5`, `B6`), and made `--apply` opt-in in `SKILL.md` (`S4`, `D22`–`D24`). Fixed AMD ROCm scoring (`B1`, `B2`), BSD GPU detection (`B3`), `/etc/os-release` distro detection (`B4`), moved `models_dir` rewriting (`B7`), `xcode-select -p` (`B8`), `models.ini`-missing tool fallback (`B9`, `B10`), image OOM fallback notice (`B11`), missing `cmake`/`uvx` error (`B12`), `llama-server --version` doctor check (`M10`), dead-code removal (`N12`), and rewrote `README.md` (`D1`–`D19`).
+
+### `v0.9.0.post2` — FreeBSD 15 CI `python312` + `rust` Package Restoration (Shipped)
+Restored the `pkg install -y python312 uv rust py312-*` prebuilt binary block in the `freebsd` CI `prepare:` step alongside `cache-after-prepare: true` so `watchfiles` and runtime dependencies build/install cleanly on FreeBSD 15.
