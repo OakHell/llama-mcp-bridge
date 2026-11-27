@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import socket
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -114,13 +116,17 @@ def test_e7_livez_readyz_and_sd_notify(tmp_path: Path) -> None:
         server.server_close()
 
     if hasattr(socket, "AF_UNIX") and sys.platform != "win32":
-        sock_path = tmp_path / "notify.sock"
-        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as srv:
-            srv.bind(str(sock_path))
-            srv.settimeout(2.0)
-            assert sd_notify("READY=1", notify_socket=str(sock_path)) is True
-            data = srv.recv(1024)
-            assert data == b"READY=1"
+        sock_dir = tempfile.mkdtemp(prefix="lmb-", dir="/tmp")
+        sock_path = Path(sock_dir) / "n.sock"
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as srv:
+                srv.bind(str(sock_path))
+                srv.settimeout(2.0)
+                assert sd_notify("READY=1", notify_socket=str(sock_path)) is True
+                data = srv.recv(1024)
+                assert data == b"READY=1"
+        finally:
+            shutil.rmtree(sock_dir, ignore_errors=True)
 
 
 def test_e11_tenant_isolation_and_advisory_lock(tmp_path: Path) -> None:

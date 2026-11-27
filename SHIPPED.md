@@ -61,6 +61,7 @@ Added opt-in SSE streaming (`stream=True`, `F1`), `models.ini` hot-reload with `
 
 ### `v0.14.0` — Opt-In `[enterprise]` Extra (`E3`, `E7`, `E11`)
 Added opt-in `[enterprise]` packaging extra (`--enterprise` / `enterprise_mode = true`), rotating JSONL audit logging (`enterprise/audit.py`, `E3`), `/livez` + `/readyz` + `systemd` `sd_notify` watchdog probes (`enterprise/probes.py`, `E7`), and multi-tenant workspace isolation with advisory file locks (`enterprise/tenant.py`, `E11`).
+- **`v0.14.0.post2`:** Shortened `AF_UNIX` test socket path under `/tmp` for macOS/FreeBSD 104-byte `sun_path` compatibility.
 
 ### `v0.13.0` — Core Supply Chain, Telemetry & Resilience (Shipped)
 Added `.github/workflows/release.yml` with `uv build`, CycloneDX 1.5 SBOM generation (`E5`), and Sigstore signing (`E6`), plus [STABILITY.md](STABILITY.md) (`E8`). Shipped `--log-format json` (`logging_utils.py`, `E1`), `--metrics` CLI alias (`E2`), `schema_version` + `--migrate-config` (`E4`), `ResilientHttpClient` exponential backoff & circuit breaker (`http_resilience.py`, `E9`), pre-flight disk-space & `ENOSPC`/`EMFILE`/thread-limit guards (`E10`), and fault-injection chaos tests (`E12`).
