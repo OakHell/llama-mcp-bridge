@@ -945,7 +945,7 @@ def _register_configured_tools_unlocked(target_mcp: FastMCP | None = None) -> li
             continue
         if section in _BUILTIN_TOOL_MAP:
             fn = _BUILTIN_TOOL_MAP[section]
-            srv.tool()(fn)  # type: ignore[type-var]
+            srv.tool()(fn)  # type: ignore[type-var]  # FastMCP tool() decorator TypeVar expects concrete callable
             registered.append(fn.__name__)
             continue
         safe_suffix = re.sub(r"[^a-zA-Z0-9_]", "_", section).strip("_")

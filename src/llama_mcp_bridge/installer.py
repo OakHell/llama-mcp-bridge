@@ -460,7 +460,7 @@ def _run_tui_wizard() -> None:
         total_gb = sum(s["size_gb"] for s in specs)
         if selected_presets and Confirm.ask(
             f"Download GGUF models for your selected presets now (~{total_gb:.1f} GB)?",
-            default=False,  # type: ignore[arg-type]
+            default=False,  # type: ignore[arg-type]  # rich.prompt.Confirm.ask stub expects str | ...
         ):
             _download_tier_models(profile, models_dir, dry_run=False, presets=selected_presets)
 

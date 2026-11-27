@@ -220,7 +220,7 @@ def migrate_bridge_ini(bridge_ini: Path, dry_run: bool = False) -> tuple[bool, s
         return False, f"bridge.ini not found at {bridge_ini}"
 
     cp = configparser.ConfigParser(interpolation=None)
-    cp.optionxform = lambda optionstr: optionstr  # type: ignore[method-assign]
+    cp.optionxform = lambda optionstr: optionstr  # type: ignore[method-assign]  # typeshed types optionxform as a method
     cp.read(bridge_ini, encoding="utf-8")
     if "bridge" not in cp:
         cp["bridge"] = {}

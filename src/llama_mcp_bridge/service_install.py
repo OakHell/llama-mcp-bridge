@@ -163,7 +163,7 @@ def _persist_server_bin(workspace: Path, rel_bin: str) -> None:
     """Persist llama_server_bin in <workspace>/bridge.ini while preserving key case."""
     ini_path = workspace / "bridge.ini"
     parser = configparser.ConfigParser(interpolation=None)
-    parser.optionxform = lambda optionstr: optionstr  # type: ignore[method-assign]
+    parser.optionxform = lambda optionstr: optionstr  # type: ignore[method-assign]  # typeshed types optionxform as a method
     if ini_path.exists():
         parser.read(ini_path, encoding="utf-8")
     if "bridge" not in parser:
