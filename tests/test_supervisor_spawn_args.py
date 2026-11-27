@@ -178,3 +178,58 @@ def test_fresh_bridge_ini_writes_llama_server_bin_schema_and_commented_defaults(
     cfg = load_config(tmp_path)
     assert cfg.schema_version == CURRENT_SCHEMA_VERSION
     assert cfg.llama_server_bin == str(bin_path)
+
+
+def test_b18_ensure_running_releases_lock_during_poll_and_b19_metal_oom(tmp_path: Path) -> None:
+    """B18: ensure_running() must not hold _lock during _poll_until_healthy(); B19: bare metal is not OOM."""
+    from llama_mcp_bridge.supervisor import classify_inference_error
+
+    cfg = BridgeConfig(workspace=str(tmp_path), auto_spawn=True)
+    sup = LlamaSupervisor(cfg)
+
+    lock_held_during_poll = []
+
+    def _fake_poll() -> bool:
+        acquired = sup._lock.acquire(blocking=False)
+        lock_held_during_poll.append(not acquired)
+        if acquired:
+            sup._lock.release()
+        return True
+
+    with (
+        patch.object(sup, "_ensure_process_exists", return_value=True),
+        patch.object(sup, "_poll_until_healthy", side_effect=_fake_poll),
+    ):
+        assert sup.ensure_running() is True
+
+    assert lock_held_during_poll == [False]
+
+    profile = SimpleNamespace(tier="8gb")
+    is_oom_shader, _ = classify_inference_error(
+        RuntimeError("500"), "ggml_metal: shader compilation failed", "coder", profile, "moderate"
+    )
+    assert is_oom_shader is False
+    is_oom_real, _ = classify_inference_error(
+        RuntimeError("500"), "metal: out of memory", "coder", profile, "moderate"
+    )
+    assert is_oom_real is True
+
+
+def test_b20_check_and_reload_models_ini_stat_cache(tmp_path: Path) -> None:
+    """B20: check_and_reload_models_ini() caches by (st_mtime_ns, st_size) under _TOOL_REG_LOCK."""
+    from llama_mcp_bridge import bridge
+    from llama_mcp_bridge.config import _CONFIG_CACHE
+
+    _CONFIG_CACHE.clear()
+    models_ini = tmp_path / "models.ini"
+    models_ini.write_text("[*]\n[digest]\nmodel = a.gguf\n", encoding="utf-8")
+    (tmp_path / "bridge.ini").write_text(
+        f"[bridge]\nmodels_ini = {models_ini}\n", encoding="utf-8"
+    )
+    bridge._MODELS_INI_STATE = None
+    bridge._MODELS_INI_STAT_CACHE = None
+
+    with patch.dict("os.environ", {"LLAMA_MCP_HOME": str(tmp_path)}):
+        assert bridge.check_and_reload_models_ini() is False
+        assert bridge.check_and_reload_models_ini() is False
+        assert bridge._MODELS_INI_STAT_CACHE is not None

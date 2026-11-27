@@ -90,3 +90,20 @@ def test_kv_cache_and_ctx_overrides_and_merge_custom_preset(tmp_path: Path) -> N
     cp2.read(models_ini, encoding="utf-8")
     assert "my-custom" in cp2
     assert cp2["my-custom"]["ctx-size"] == "8192"
+
+
+def test_b17_resolve_hf_gguf_repo_wraps_network_and_json_errors() -> None:
+    """B17: resolve_hf_gguf_repo must wrap URLError/JSONDecodeError into RuntimeError."""
+    import urllib.error
+    from unittest.mock import patch
+
+    from llama_mcp_bridge.presets import resolve_hf_gguf_repo
+
+    with (
+        patch(
+            "llama_mcp_bridge.presets.DEFAULT_HTTP_CLIENT.urlopen",
+            side_effect=urllib.error.URLError("offline"),
+        ),
+        pytest.raises(RuntimeError, match="Failed to query Hugging Face repository"),
+    ):
+        resolve_hf_gguf_repo("owner/repo")

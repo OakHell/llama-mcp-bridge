@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Sequence
@@ -80,7 +83,7 @@ def _download_spec_list(
             print(f"[DRY-RUN] Would download {spec['filename']} ({size_label}) from {spec['url']}")
             continue
 
-        ok, _, expected_sha256 = _inst_attr("probe_model_metadata", probe_model_metadata)(spec["url"])
+        ok, head_size_bytes, expected_sha256 = _inst_attr("probe_model_metadata", probe_model_metadata)(spec["url"])
         if not ok:
             print(f"WARNING: {spec['filename']} not found at {spec['url']}; skipping.")
             stem = spec["filename"].replace(".gguf", "").split("-")[0]
@@ -92,43 +95,65 @@ def _download_spec_list(
         part = models_dir / f"{spec['filename']}.part"
         offset = part.stat().st_size if part.exists() else 0
         size_gb = float(spec.get("size_gb") or 0)
-        if size_gb > 0:
-            ensure_disk_space(models_dir, max(0, int(size_gb * (1024**3)) - offset), spec["filename"])
-        req = urllib.request.Request(spec["url"])
-        if offset > 0:
-            req.add_header("Range", f"bytes={offset}-")
+        if head_size_bytes is not None and head_size_bytes > 0:
+            required_bytes = max(0, head_size_bytes - offset)
+        elif size_gb > 0:
+            required_bytes = max(0, int(size_gb * (1024**3)) - offset)
+        else:
+            logging.getLogger(__name__).warning("Unknown size for %s; skipping disk space preflight.", spec["filename"])
+            required_bytes = 0
+        if required_bytes > 0:
+            ensure_disk_space(models_dir, required_bytes, spec["filename"])
 
-        try:
-            with DEFAULT_HTTP_CLIENT.urlopen(req, timeout=60) as resp:
-                status = getattr(resp, "status", 200)
-                mode = "ab" if status == 206 and offset > 0 else "wb"
-                total = int(resp.headers.get("Content-Length", "0") or 0)
-                is_resume = status == 206 and offset > 0
-                full_total = (offset + total) if (is_resume and total > 0) else (total or None)
-                completed = offset if is_resume else 0
-                progress_cls = _inst_attr("Progress", Progress)
-                with progress_cls() as progress:
-                    task = progress.add_task(
-                        f"Downloading {spec['filename']}", total=full_total, completed=completed
-                    )
-                    with part.open(mode) as fh:
-                        while True:
-                            chunk = resp.read(1024 * 1024)
-                            if not chunk:
-                                break
-                            fh.write(chunk)
-                            progress.update(task, advance=len(chunk))
-            _verify_and_finalize_part(part, target, spec["filename"], expected_sha256)
-        except urllib.error.HTTPError as err:
-            if err.code == 416 and part.exists():
+        max_chunk_retries = DEFAULT_HTTP_CLIENT.max_retries
+        for attempt in range(max_chunk_retries + 1):
+            offset = part.stat().st_size if part.exists() else 0
+            req = urllib.request.Request(spec["url"])
+            if offset > 0:
+                req.add_header("Range", f"bytes={offset}-")
+
+            try:
+                with DEFAULT_HTTP_CLIENT.urlopen(req, timeout=60) as resp:
+                    status = getattr(resp, "status", 200)
+                    mode = "ab" if status == 206 and offset > 0 else "wb"
+                    total = int(resp.headers.get("Content-Length", "0") or 0)
+                    is_resume = status == 206 and offset > 0
+                    full_total = (offset + total) if (is_resume and total > 0) else (total or None)
+                    completed = offset if is_resume else 0
+                    progress_cls = _inst_attr("Progress", Progress)
+                    with progress_cls() as progress:
+                        task = progress.add_task(
+                            f"Downloading {spec['filename']}", total=full_total, completed=completed
+                        )
+                        with part.open(mode) as fh:
+                            while True:
+                                chunk = resp.read(1024 * 1024)
+                                if not chunk:
+                                    break
+                                fh.write(chunk)
+                                progress.update(task, advance=len(chunk))
                 _verify_and_finalize_part(part, target, spec["filename"], expected_sha256)
-            else:
+                break
+            except urllib.error.HTTPError as err:
+                if err.code == 416 and part.exists():
+                    cr = err.headers.get("Content-Range", "") if err.headers else ""
+                    m = re.search(r"bytes\s+\*/(\d+)", cr)
+                    if m and offset == int(m.group(1)):
+                        _verify_and_finalize_part(part, target, spec["filename"], expected_sha256)
+                        break
+                    raise RuntimeError(
+                        f"HTTP 416 Range Not Satisfiable for {spec['filename']} "
+                        f"(offset={offset}, Content-Range={cr!r})"
+                    ) from err
                 raise
-        except (OSError, RuntimeError) as err:
-            classified = classify_resource_error(err, f"downloading {spec['filename']}")
-            if classified is not None:
-                raise classified from err
-            raise
+            except (OSError, TimeoutError, urllib.error.URLError) as err:
+                classified = classify_resource_error(err, f"downloading {spec['filename']}")
+                if classified is not None:
+                    raise classified from err
+                if attempt < max_chunk_retries:
+                    time.sleep(0.5 * (2**attempt))
+                    continue
+                raise
 
 
 def _download_tier_models(

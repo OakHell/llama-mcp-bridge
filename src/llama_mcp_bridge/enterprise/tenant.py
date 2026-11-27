@@ -43,13 +43,17 @@ def resolve_tenant_workspace(base_workspace: Path, tenant: str) -> Path:
 
 @contextlib.contextmanager
 def advisory_file_lock(lock_path: Path) -> Iterator[None]:
-    """Cross-platform advisory file lock (fcntl.flock on POSIX, msvcrt.locking on Windows)."""
+    """Cross-platform advisory file lock (blocking fcntl.flock on POSIX; ~10s LK_LOCK retry window on Windows)."""
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     handle = lock_path.open("a+b")
     try:
         if os.name == "nt":
             import msvcrt
 
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"\x00")
+                handle.flush()
             handle.seek(0)
             msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)  # type: ignore[attr-defined]  # Windows-only stdlib attributes
             try:

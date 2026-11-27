@@ -75,19 +75,37 @@ def _snapshot_models_ini(models_ini: Path) -> tuple[str, int | None, bytes | Non
     return str(models_ini), None, None
 
 
+_MODELS_INI_STAT_CACHE: tuple[str, int, int, tuple[str, int | None, bytes | None]] | None = None
+
+
 def check_and_reload_models_ini(ctx: Any = None, target_mcp: FastMCP | None = None) -> bool:
     """Hot-reload models.ini when changed on disk and emit notifications/tools/list_changed."""
-    global _MODELS_INI_STATE
+    global _MODELS_INI_STATE, _MODELS_INI_STAT_CACHE
     cfg = load_config()
     if not cfg.models_ini:
         return False
-    snap = _snapshot_models_ini(Path(cfg.models_ini))
-    if _MODELS_INI_STATE is None:
+    ini_path = Path(cfg.models_ini)
+    with _TOOL_REG_LOCK:
+        try:
+            st = ini_path.stat()
+            if (
+                _MODELS_INI_STAT_CACHE is not None
+                and _MODELS_INI_STAT_CACHE[0] == str(ini_path)
+                and _MODELS_INI_STAT_CACHE[1] == st.st_mtime_ns
+                and _MODELS_INI_STAT_CACHE[2] == st.st_size
+            ):
+                snap = _MODELS_INI_STAT_CACHE[3]
+            else:
+                snap = _snapshot_models_ini(ini_path)
+                _MODELS_INI_STAT_CACHE = (str(ini_path), st.st_mtime_ns, st.st_size, snap)
+        except OSError:
+            snap = _snapshot_models_ini(ini_path)
+        if _MODELS_INI_STATE is None:
+            _MODELS_INI_STATE = snap
+            return False
+        if snap == _MODELS_INI_STATE:
+            return False
         _MODELS_INI_STATE = snap
-        return False
-    if snap == _MODELS_INI_STATE:
-        return False
-    _MODELS_INI_STATE = snap
     _register_configured_tools(target_mcp)
     session = getattr(ctx, "session", None)
     sender = getattr(session, "send_tool_list_changed", None) or getattr(ctx, "send_tool_list_changed", None)

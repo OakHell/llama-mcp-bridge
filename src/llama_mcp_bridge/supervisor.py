@@ -315,7 +315,7 @@ class LlamaSupervisor:
             if not self._ensure_process_exists():
                 return False
 
-            return self._poll_until_healthy()
+        return self._poll_until_healthy()
 
     def _configured_presets(self) -> list[str]:
         """Return presets configured in models.ini, falling back to all valid presets if missing."""
@@ -559,7 +559,8 @@ _OOM_SIGNATURES = (
     "vk::outofdevicememoryerror",
     "insufficient memory",
     "cannot allocate memory",
-    "metal",
+    "metal: out of memory",
+    "ggml_metal_buffer_init: failed",
 )
 
 

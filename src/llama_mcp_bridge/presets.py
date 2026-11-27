@@ -650,8 +650,11 @@ def resolve_hf_gguf_repo(
         raise ValueError(f"Invalid Hugging Face repo '{repo_spec}'; expected '<owner>/<repo>[:<quant-or-filename>]'.")
 
     api_url = f"https://huggingface.co/api/models/{repo_id}"
-    with DEFAULT_HTTP_CLIENT.urlopen(api_url, timeout=timeout) as resp:
-        payload = json.loads(resp.read().decode("utf-8"))
+    try:
+        with DEFAULT_HTTP_CLIENT.urlopen(api_url, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"Failed to query Hugging Face repository '{repo_id}': {exc}") from exc
 
     siblings = [item.get("rfilename", "") for item in payload.get("siblings", []) if isinstance(item, dict)]
     gguf_files = [f for f in siblings if f.lower().endswith(".gguf")]

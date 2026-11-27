@@ -54,7 +54,10 @@ def check_readiness(
     health_check: Callable[[], tuple[bool, str]],
 ) -> tuple[int, dict[str, Any]]:
     """Evaluate readiness probe and return (HTTP status code, JSON payload)."""
-    ok, reason = health_check()
+    try:
+        ok, reason = health_check()
+    except Exception as exc:  # noqa: BLE001
+        return 503, {"status": "error", "reason": str(exc)}
     if ok:
         return 200, {"status": "ready"}
     return 503, {"status": "not_ready", "reason": reason}

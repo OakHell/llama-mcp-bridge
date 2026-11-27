@@ -4,6 +4,12 @@
 
 ---
 
+## Manual / Human-Only Action Items
+- [ ] **D43 — Record and embed a 30-second terminal demo (`README.md`, D-13):** Capture a clean `asciinema` recording of `llama-mcp-install` running on a fresh 8 GB setup and link/embed it near Quick Start.
+- [ ] **N18:** Verify `llama.cpp` runtime handling of `reasoning-budget-message = ""` for `coder-fast` and `6 GB` CPU prefill latency for `digest` at `65536` ctx (`presets.py`).
+
+---
+
 ## Open — P0 (Critical Security, User-Path Breakage & README First-Screen)
 - [x] **B13 — 24 GB+ `--presets coder` / `--presets coder-long` download vs. `models.ini` mismatch (`presets.py`):**
 - [x] **S6 — `include` patterns bypass `DEFAULT_IGNORES` (`discovery.py`):**
@@ -19,16 +25,15 @@
 ## Open — P1 (High-Impact Reliability, Concurrency, Downloads & README De-Bloating)
 
 - [x] **B23 — Fresh `bridge.ini` generation omits `llama_server_bin` and commented defaults (`installer.py`):** Always write `llama_server_bin` when a binary is resolved (including `system-bin` and `--tui`), stamp `schema_version = 1`, and include commented defaults aligned with `bridge.example.ini`.
-- [ ] **M29 — Persist resolved `llama_server_bin` and commented defaults in generated `bridge.ini` (`installer.py`):** Fresh `bridge.ini` files omit `llama_server_bin` when `--mode system-bin` is used and omit commented defaults for `host`, `port`, `auto_spawn`, `models_max`, `sleep_idle_seconds`, and `fallback_on_oom`. Write `llama_server_bin` whenever a binary path is detected and include concise commented defaults aligned with `bridge.example.ini`.
-- [ ] **B14 — Disk preflight uses stale registry `size_gb` (`model_download.py`):** `_download_spec_list` computes required disk space from static `spec["size_gb"]` (skipping the check entirely when `size_gb == 0` on custom `--hf`/`--file` models) instead of using `size_bytes` returned by `probe_model_metadata`. Prefer HEAD `Content-Length` `size_bytes`, falling back to `size_gb` only when HEAD size is unavailable.
-- [ ] **B15 — HTTP 416 treated unconditionally as download complete (`model_download.py`):** `_download_spec_list` treats any HTTP `416 Range Not Satisfiable` on an existing `.part` file as completion without checking `Content-Range: bytes */<total>`, which can finalize an oversized `.part` if an upstream file shrank and lacks a SHA-256 ETag. Verify `offset == total` from `Content-Range` before finalizing.
-- [ ] **B16 — No per-chunk retry/resume inside GGUF download loop (`model_download.py`):** A single transient socket read failure in `resp.read(1024 * 1024)` aborts multi-gigabyte downloads instead of retrying from the current `.part` byte offset with backoff.
-- [ ] **B17 — Unhandled HTTP/JSON exceptions in `resolve_hf_gguf_repo` (`presets.py`):** Unlike sibling helpers (`probe_model_metadata`, `search_hf_gguf_models`, `verify_model_url`), `resolve_hf_gguf_repo` does not catch `URLError`, `HTTPError`, `JSONDecodeError`, or `TimeoutError`, leaking raw tracebacks on `llama-mcp-models add --hf`.
-- [ ] **B18 — `ensure_running()` holds `self._lock` across 30s health polling (`supervisor.py`):** Holding `self._lock` during `_poll_until_healthy()` blocks concurrent `stop()`, `is_healthy()`, `get_health_status()`, and `atexit` cleanup for up to 30 seconds. Release `self._lock` after spawning the subprocess and poll outside the lock.
-- [ ] **B19 — Broad `"metal"` substring in `_OOM_SIGNATURES` (`supervisor.py`):** Bare `"metal"` matches non-OOM Metal shader compilation or device-init errors on macOS, misclassifying them as OOM. Narrow to explicit allocation failures (e.g., `"metal: out of memory"`).
-- [ ] **B20 — Unsynchronized `_MODELS_INI_STATE` and per-call disk reads (`bridge.py`):** Guard snapshot-compare-swap in `check_and_reload_models_ini` with `_TOOL_REG_LOCK` and cache by `(st_mtime_ns, st_size)` before reading `models.ini` bytes on every `query_llama` call.
-- [ ] **B21 — `check_readiness` does not catch `health_check` exceptions (`enterprise/probes.py`):** Wrap `health_check()` in `try/except` so supervisor or config errors return `(503, {"status": "error", "reason": ...})` instead of an unhandled exception.
-- [ ] **B22 — Windows `msvcrt.locking` on zero-byte lock files (`enterprise/tenant.py`):** `msvcrt.locking(fd, msvcrt.LK_LOCK, 1)` can raise `PermissionError` / `Errno 13` on an empty newly created file and times out after ~10s unlike blocking POSIX `flock`. Ensure at least 1 byte exists before locking and document/handle retry semantics.
+- [x] **B14 — Disk preflight uses stale registry `size_gb` (`model_download.py`):** `_download_spec_list` computes required disk space from static `spec["size_gb"]` (skipping the check entirely when `size_gb == 0` on custom `--hf`/`--file` models) instead of using `size_bytes` returned by `probe_model_metadata`. Prefer HEAD `Content-Length` `size_bytes`, falling back to `size_gb` only when HEAD size is unavailable.
+- [x] **B15 — HTTP 416 treated unconditionally as download complete (`model_download.py`):** `_download_spec_list` treats any HTTP `416 Range Not Satisfiable` on an existing `.part` file as completion without checking `Content-Range: bytes */<total>`, which can finalize an oversized `.part` if an upstream file shrank and lacks a SHA-256 ETag. Verify `offset == total` from `Content-Range` before finalizing.
+- [x] **B16 — No per-chunk retry/resume inside GGUF download loop (`model_download.py`):** A single transient socket read failure in `resp.read(1024 * 1024)` aborts multi-gigabyte downloads instead of retrying from the current `.part` byte offset with backoff.
+- [x] **B17 — Unhandled HTTP/JSON exceptions in `resolve_hf_gguf_repo` (`presets.py`):** Unlike sibling helpers (`probe_model_metadata`, `search_hf_gguf_models`, `verify_model_url`), `resolve_hf_gguf_repo` does not catch `URLError`, `HTTPError`, `JSONDecodeError`, or `TimeoutError`, leaking raw tracebacks on `llama-mcp-models add --hf`.
+- [x] **B18 — `ensure_running()` holds `self._lock` across 30s health polling (`supervisor.py`):** Holding `self._lock` during `_poll_until_healthy()` blocks concurrent `stop()`, `is_healthy()`, `get_health_status()`, and `atexit` cleanup for up to 30 seconds. Release `self._lock` after spawning the subprocess and poll outside the lock.
+- [x] **B19 — Broad `"metal"` substring in `_OOM_SIGNATURES` (`supervisor.py`):** Bare `"metal"` matches non-OOM Metal shader compilation or device-init errors on macOS, misclassifying them as OOM. Narrow to explicit allocation failures (e.g., `"metal: out of memory"`).
+- [x] **B20 — Unsynchronized `_MODELS_INI_STATE` and per-call disk reads (`bridge.py`):** Guard snapshot-compare-swap in `check_and_reload_models_ini` with `_TOOL_REG_LOCK` and cache by `(st_mtime_ns, st_size)` before reading `models.ini` bytes on every `query_llama` call.
+- [x] **B21 — `check_readiness` does not catch `health_check` exceptions (`enterprise/probes.py`):** Wrap `health_check()` in `try/except` so supervisor or config errors return `(503, {"status": "error", "reason": ...})` instead of an unhandled exception.
+- [x] **B22 — Windows `msvcrt.locking` on zero-byte lock files (`enterprise/tenant.py`):** `msvcrt.locking(fd, msvcrt.LK_LOCK, 1)` can raise `PermissionError` / `Errno 13` on an empty newly created file and times out after ~10s unlike blocking POSIX `flock`. Ensure at least 1 byte exists before locking and document/handle retry semantics.
 - [x] **D36 — Extract 25-row CLI flag table to `docs/cli.md` (`README.md`, `docs/cli.md`, D-06):** Move the ~600-word CLI reference table to `docs/cli.md`, leaving a 3-line pointer to `llama-mcp-install --help` and `docs/cli.md`.
 - [x] **D37 — Extract full MCP tool tables & reasoning stack to `docs/tools.md` (`README.md`, `docs/tools.md`, D-07):** Move the Specialist, Dispatcher, and Diagnostics tables plus Reasoning Management to `docs/tools.md`; keep a compact 9-row specialist summary table (`name` + one-line role) in `README.md`.
 - [x] **D38 — Extract 15-bullet "Advanced Runtime & Multi-Workspace" section to `docs/advanced.md` (`README.md`, `docs/advanced.md`, D-08):** Move auth headers, named workspaces, warmup, and signature verification reference details to `docs/advanced.md`.
@@ -36,7 +41,6 @@
 - [x] **D40 — Deduplicate Enterprise warning (`README.md`, `docs/enterprise.md`, D-10):** Keep a single two-sentence provisional warning in `README.md` and move E3/E7/E11 operational details to `docs/enterprise.md`.
 - [x] **D41 — Add top-of-README status badges (`README.md`, D-11):** Add Python `>=3.11`, GitHub Actions CI status, latest release tag, and license badges under the title.
 - [x] **D42 — Hoist Troubleshooting FAQ and link from Quick Start (`README.md`, `docs/troubleshooting.md`, D-12):** Move condensed 5-item Troubleshooting FAQ higher in `README.md` (with a direct link from Quick Start) and expand full troubleshooting in `docs/troubleshooting.md`.
-- [ ] **D43 — Record and embed a 30-second terminal demo (`README.md`, D-13):** Capture a clean `asciinema` recording of `llama-mcp-install` running on a fresh 8 GB setup and link/embed it near Quick Start.
 
 ---
 
@@ -71,7 +75,6 @@
 - [ ] **N15:** Source Hugging Face `User-Agent` version dynamically from `importlib.metadata.version("llama-mcp-bridge")` instead of hardcoded `llama-mcp-bridge/0.1.0`.
 - [ ] **N16:** Clarify or remove the empty `enterprise = []` optional extra in `pyproject.toml` and document that `--enterprise` is a runtime flag (`README.md`, `docs/enterprise.md`).
 - [ ] **N17:** Verify `.gitignore` excludes `__pycache__/` and confirm `git ls-files | grep __pycache__` is empty.
-- [ ] **N18:** Verify `llama.cpp` runtime handling of `reasoning-budget-message = ""` for `coder-fast` and `6 GB` CPU prefill latency for `digest` at `65536` ctx (`presets.py`).
 - [ ] **N19:** Add a `--doctor --verify-models` size-drift warning when HEAD `X-Linked-Size` diverges by >20% from registry `size_gb` (`presets.py`).
 - [x] **D55 — Tighten prose style and reduce em-dash/abstraction density (`README.md`, D-26, D-27):** Edit section intros for direct, concrete phrasing (~1,200-word landing page budget).
 - [x] **D56 — Clarify TUI wizard auto-launch behaviour in Quick Start (`README.md`, D-28):** State explicitly whether `llama-mcp-install` with no flags launches the interactive TUI wizard, matching the section heading.
@@ -84,7 +87,7 @@
 ## Open — Testing & Tooling Gaps
 - [x] **T26 — Add `tests/test_presets.py` with tier × preset invariant:**
 - [x] **T27 — Expand `tests/test_discovery.py` (`discovery.py`):**
-- [ ] **T28 — Add `tests/test_model_download.py` & `tests/test_enterprise.py`:** Cover HEAD `size_bytes` preflight (`B14`), HTTP 416 `Content-Range` validation (`B15`), chunk retry/resume (`B16`), tenant symlink rejection (`S7`), Windows empty-file `msvcrt.locking` (`B22`), and `check_readiness` error handling (`B21`).
+- [x] **T28 — Add `tests/test_model_download.py` & `tests/test_enterprise.py`:** Cover HEAD `size_bytes` preflight (`B14`), HTTP 416 `Content-Range` validation (`B15`), chunk retry/resume (`B16`), tenant symlink rejection (`S7`), Windows empty-file `msvcrt.locking` (`B22`), and `check_readiness` error handling (`B21`).
 - [ ] **T29 — Audit `service_install.py` coverage & refactor test suite structure:** Verify `test_cross_platform.py` covers all 5 service targets (`systemd`, `launchd`, `schtasks`, `crontab`, BSD `rc.d`), split `test_cross_platform.py` by platform/subsystem, group version-tagged tests (`test_v010`…`test_v090`) by feature, and centralize shared fixtures in `tests/conftest.py`.
 - [x] **T30 — Verify `Makefile` parity with CI and add `make verify-all` (`Makefile`):** Ensure `make test`, `make lint`, and `make typecheck` mirror `.github/workflows/` and add `make verify-all` (`--doctor` + `--selftest`).
 
