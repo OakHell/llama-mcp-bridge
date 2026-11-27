@@ -4,7 +4,7 @@ Hardware-aware local LLM MCP bridge powered by `llama.cpp` router mode.
 
 [![Python >=3.11](https://img.shields.io/badge/python-%3E%3D3.11-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/OakHell/llama-mcp-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/OakHell/llama-mcp-bridge/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v1.0.1-green.svg)](https://github.com/OakHell/llama-mcp-bridge/releases/tag/v1.0.1)
+[![Release](https://img.shields.io/badge/release-v1.0.2-green.svg)](https://github.com/OakHell/llama-mcp-bridge/releases/tag/v1.0.2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Docs](docs/cli.md) · [Architecture](ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
@@ -24,7 +24,7 @@ So I built `llama-mcp-bridge` to automate the tedious parts while keeping every 
 - **Token savings & output hygiene ([`hygiene.py`](src/llama_mcp_bridge/hygiene.py)):** Strips internal reasoning/monologue tags deterministically while preserving fenced code blocks, LaTeX, and structured JSON.
 - **`.gitignore`-brokered file context ([`discovery.py`](src/llama_mcp_bridge/discovery.py)):** Expands files, directories, and globs on the host side within `.gitignore` cascades, `include`/`ignore` rules, binary skipping, and smallest-first character budgets.
 - **GGUF-header-derived tuning ([`gguf_header.py`](src/llama_mcp_bridge/gguf_header.py)):** Inspects GGUF v2/v3 binary headers directly (MHA/GQA, SWA, hybrid SSM, DeepSeek MLA, KV-shared layers) to size KV caches from actual model geometry.
-- **Honest labeling of extras:** Core local inference is `v1.0.1`-stable; opt-in `[enterprise]` features (`--enterprise`) and background service wrappers are clearly marked as provisional until field-validated.
+- **Honest labeling of extras:** Core local inference is `v1.0.2`-stable; opt-in `[enterprise]` features (`--enterprise`) and background service wrappers are clearly marked as provisional until field-validated.
 
 ## Who this is for / not for
 
@@ -130,7 +130,7 @@ All specialist models run strictly **agency-free**: they have zero function-call
 
 ## Enterprise & Stability
 
-Core `llama-mcp-bridge` (`v1.0.1`) is covered by Semantic Versioning in [STABILITY.md](STABILITY.md). Opt-in enterprise capabilities (`--enterprise`, `E3` rotating JSONL audit logs, `E7` `/livez` + `/readyz` + `systemd` watchdog probes, `E11` multi-tenant isolation) are documented in [docs/enterprise.md](docs/enterprise.md).
+Core `llama-mcp-bridge` (`v1.0.2`) is covered by Semantic Versioning in [STABILITY.md](STABILITY.md). Opt-in enterprise capabilities (`--enterprise`, `E3` rotating JSONL audit logs, `E7` `/livez` + `/readyz` + `systemd` watchdog probes, `E11` multi-tenant isolation) are documented in [docs/enterprise.md](docs/enterprise.md).
 
 > **Warning:** `--enterprise` (`E3`, `E7`, `E11`) is verified by automated unit and chaos tests only and has **not yet been field-validated in a live multi-tenant production environment**.
 

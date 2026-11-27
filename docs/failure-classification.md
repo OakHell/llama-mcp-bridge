@@ -2,15 +2,15 @@
 
 `llama-mcp-bridge` distinguishes **VRAM/RAM out-of-memory (OOM) failures** from **timeouts and transport errors** using server-side `stderr` evidence rather than guessing from HTTP status codes alone.
 
-## Server-Side `stderr` Capture (`supervisor.py`)
+## Server-Side Log Tail (`supervisor.py`)
 
-When `LlamaSupervisor` spawns `llama-server`, stdout and stderr are redirected to `llama-server.log` (configurable via `server_log` in `bridge.ini`). A background daemon thread (`_start_stderr_reader`) drains stderr into a bounded `deque(maxlen=40)`, falling back to reading the tail of `llama-server.log` when the process exits.
+When `LlamaSupervisor` spawns `llama-server`, stdout and stderr are redirected to `llama-server.log` (configurable via `server_log` in `bridge.ini`), and `classify_inference_error` inspects the `server-log tail` when classifying failures.
 
 ## Classification (`classify_inference_error`)
 
 On HTTP 500/503 or a request/timeout exception in `bridge.py`:
 
-1. `classify_inference_error` scans the captured `stderr` tail (and exception text) for `_OOM_SIGNATURES` (e.g. `cudaMalloc failed`, `out of memory`, `failed to allocate`, `ggml_backend_cuda_buffer_type_alloc_buffer`, `vk::OutOfDeviceMemoryError`, `metal: failed to allocate`, `not enough memory`).
+1. `classify_inference_error` scans the `server-log tail` (and exception text) for `_OOM_SIGNATURES` (e.g. `cudaMalloc`, `out of memory`, `failed to allocate`, `vk::OutOfDeviceMemoryError`, `metal: out of memory`, `ggml_metal_buffer_init: failed`, `insufficient memory`).
 2. **If OOM is detected:** Returns `(True, diagnostic)` advising the user to lower `ctx-size`, switch `residency = stingy`, or enable `fallback_on_oom = true` for their hardware tier.
 3. **If no OOM signature is found:** Returns `(False, diagnostic)` identifying a timeout or connection failure and surfacing the `stderr` tail for debugging.
 

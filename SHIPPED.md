@@ -68,3 +68,8 @@ Added opt-in `[enterprise]` packaging extra (`--enterprise` / `enterprise_mode =
 
 ### `v1.0.0` — Ceremonial Stability Graduation
 Locked in the [STABILITY.md](STABILITY.md) `1.x` contract across all 5 CLI entrypoints, `--json` schemas, `bridge.ini` `schema_version`, and core MCP tools (`158 / 158` tracker items shipped; `[enterprise]` remains **Provisional / Unvalidated in Production**).
+
+### `v1.0.2` — Security, Reliability, Download & Documentation Hardening
+- **Security (`S6`–`S9`):** Enforced `DEFAULT_IGNORES` over `include` patterns (`discovery.py`), rejected symlinks in `resolve_tenant_workspace` (`enterprise/tenant.py`), escaped `<file>` prompt delimiters (`discovery.py`), and hashed `files_accessed` paths in `AuditLogger` (`enterprise/audit.py`).
+- **Reliability & Downloads (`B13`–`B23`, `M21`–`M28`):** Fixed `24gb+` `coder`/`coder-long` spec parity, HEAD `size_bytes` preflight, HTTP `416` `Content-Range` validation, per-chunk retry/resume, `resolve_hf_gguf_repo` error wrapping, non-blocking `ensure_running()` polling, narrowed Metal OOM signatures, `(st_mtime_ns, st_size)`-cached `models.ini` hot-reload, `check_readiness` 503 error handling, Windows 1-byte lock initialization, fresh `bridge.ini` `llama_server_bin` + `schema_version = 1` + commented defaults, literal `[draft]` path resolution, UTF-8 character budget slicing, `"DEFAULT"` preset rejection, `.GGUF`/`.part` pruning, and atomic `verify_tier_models` cache writes.
+- **Polish & Docs (`N13`–`N19`, `D31`–`D59`, `T26`–`T30`):** Preserved `.part.corrupt` on SHA-256 mismatch, exported `enterprise` submodules, dynamic `User-Agent`, >20% size-drift warning, streamlined `README.md` with modular `docs/` pages, `Makefile` CI alignment, and expanded regression/invariant tests.

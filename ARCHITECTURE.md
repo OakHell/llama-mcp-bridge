@@ -63,8 +63,8 @@ flowchart TD
 
 ## Lifecycle & Integration Seams
 
-1. **`llama-server` Auto-Spawn Lifecycle (`supervisor.py`):** When `auto_spawn = true`, `LlamaSupervisor._start_server()` launches `llama-server` with `--host`, `--port`, `--models-preset`, `--models-dir`, and tier+residency `--models-max` / `--sleep-idle-seconds` (or explicit `bridge.ini` overrides), then polls `/health` until ready.
-2. **`models.ini` Hot-Reload (`bridge.py`):** `bridge.py` checks `models.ini` mtime on disk and emits `notifications/tools/list_changed` when presets change; `ask_preset` can also call newly added presets immediately.
+1. **`llama-server` Auto-Spawn Lifecycle (`supervisor.py`):** When `auto_spawn = true`, `LlamaSupervisor.ensure_running()` spawns `llama-server` under `self._lock` with `--host`, `--port`, `--models-preset`, `--models-dir`, and tier+residency `--models-max` / `--sleep-idle-seconds` (or explicit `bridge.ini` overrides), then releases `self._lock` before polling `/health` so status/stop calls never block.
+2. **`models.ini` Hot-Reload (`bridge.py`):** `check_and_reload_models_ini()` caches file state by `(st_mtime_ns, st_size)` under `_TOOL_REG_LOCK` and emits `notifications/tools/list_changed` when presets change; `ask_preset` can also call newly added presets immediately.
 3. **`fallback_on_oom` Flow (`bridge.py`):** If `llama-server` returns HTTP 500 with OOM indicators in captured `stderr` and `fallback_on_oom = true`, text requests automatically retry on the lightweight `digest` preset.
 4. **Four Integration Seams:**
    - **MCP Host ↔ `bridge.py`:** JSON-RPC over stdio (`fastmcp`).

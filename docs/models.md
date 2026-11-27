@@ -33,10 +33,13 @@ llama-mcp-models remove my-model
 llama-mcp-models --prune
 ```
 
-`--prune` removes unreferenced `.gguf` files in `models_dir` that are no longer referenced by `models.ini`.
+`--prune` removes unreferenced `.gguf` files (case-insensitive, including `.GGUF`) and stale `.part` / `.gguf.tmp` partials (`include_partials=True`) in `models_dir`.
 
-## Verifying Curated URLs
+## Downloads & Verifying Curated URLs
 
 ```bash
 llama-mcp-install --verify-models --no-cache
 ```
+
+- **Disk-Space Preflight & Resume:** Downloads check free disk space against HEAD `Content-Length` (falling back to registry `size_gb`), validate HTTP `416` `Content-Range` headers before finalizing `.part` files, and retry transient chunk-read errors with exponential backoff.
+- **SHA-256 & Size-Drift Checks:** On SHA-256 mismatch, the `.part` file is preserved as `<filename>.part.corrupt` for inspection. `--verify-models` flags >20% size drift from registry expectations.

@@ -26,6 +26,8 @@ We aim to acknowledge reports within 72 hours and provide a remediation timeline
 
 ## Security Boundaries
 - `[enterprise]` multi-tenant isolation (`E11`) and audit logging (`E3`) have only been verified in automated tests and require independent security review prior to multi-tenant production deployment.
+- **File Discovery & Prompt Framing:** Structural `DEFAULT_IGNORES` (`.git`, `.venv`, `node_modules`, `__pycache__`) remain enforced even when matched by `include` patterns (`S6`), and `<file path="...">` attributes/closing tags are escaped to prevent prompt-framing injection (`S8`).
+- **Multi-Tenant & Audit Hardening:** `resolve_tenant_workspace` rejects symlinks before `chmod 0o700` (`S7`), and `AuditLogger` stores 16-char SHA-256 hashes of `files_accessed` paths (`S9`).
 
 - **Local-only inference by default:** `llama-server` binds to `127.0.0.1` unless explicitly configured otherwise in `bridge.ini`.
 - **Agency-free specialist tools:** Specialist MCP tools (`ask_digest`, `ask_coder`, etc.) do not expose shell execution or function-calling to the local model; file and image access is brokered by the Python bridge within `.gitignore` and character budgets.
