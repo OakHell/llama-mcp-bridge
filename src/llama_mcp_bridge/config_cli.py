@@ -8,6 +8,8 @@ import importlib.metadata
 import sys
 from pathlib import Path
 
+from llama_mcp_bridge.logging_utils import configure_logging
+
 __all__ = [
     "check_ini_file",
     "main",
@@ -78,6 +80,12 @@ def main() -> None:
         action="version",
         version=f"llama-mcp-config {importlib.metadata.version('llama-mcp-bridge')}",
     )
+    parser.add_argument(
+        "--log-format",
+        choices=["text", "json"],
+        default="text",
+        help="Logging output format.",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     chk = sub.add_parser("check", help="Validate bridge.ini or models.ini.")
     chk.add_argument("path", type=str, help="Path to bridge.ini or models.ini.")
@@ -88,6 +96,7 @@ def main() -> None:
         help="INI file type (default: auto-detect by filename).",
     )
     args = parser.parse_args()
+    configure_logging("WARNING", args.log_format)
 
     if args.command == "check":
         target = Path(args.path).expanduser()

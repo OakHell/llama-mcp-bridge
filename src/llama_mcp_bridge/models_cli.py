@@ -3,7 +3,6 @@
 import argparse
 import configparser
 import importlib.metadata
-import logging
 import shutil
 import sys
 from collections.abc import Sequence
@@ -19,6 +18,7 @@ from llama_mcp_bridge.config import load_config
 from llama_mcp_bridge.gguf_header import parse_gguf_header, recommend_gguf_tuning
 from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
 from llama_mcp_bridge.installer import _download_spec_list, _download_tier_models
+from llama_mcp_bridge.logging_utils import configure_logging
 from llama_mcp_bridge.ollama_import import import_ollama_models
 from llama_mcp_bridge.presets import (
     _VALID_PRESETS,
@@ -307,6 +307,12 @@ def main() -> None:
         default="WARNING",
         help="Logging verbosity level.",
     )
+    parser.add_argument(
+        "--log-format",
+        choices=["text", "json"],
+        default="text",
+        help="Logging output format.",
+    )
     parser.add_argument("action", nargs="?", choices=["list", "add", "remove"], help="Action to run.")
     parser.add_argument("presets", nargs="*", help="Preset names for add/remove.")
     parser.add_argument("--dir", "--home", dest="workspace_dir", type=str, help="Explicit workspace directory.")
@@ -334,10 +340,7 @@ def main() -> None:
     parser.add_argument("-y", "--yes", action="store_true", help="Confirm destructive removals.")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files.")
     args = parser.parse_args()
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+    configure_logging(args.log_level, args.log_format)
 
     cfg = load_config(explicit_dir=args.workspace_dir)
     profile = detect_hardware()

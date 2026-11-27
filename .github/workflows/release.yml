@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Generate CycloneDX SBOM
+        run: uv export --frozen --no-dev --format cyclonedx1.5 --no-emit-project -o dist/sbom.cdx.json
+
+      - name: Sign release artifacts with Sigstore
+        uses: sigstore/gh-action-sigstore-python@v3.0.0
+        with:
+          inputs: >-
+            dist/*.whl
+            dist/*.tar.gz
+            dist/sbom.cdx.json
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

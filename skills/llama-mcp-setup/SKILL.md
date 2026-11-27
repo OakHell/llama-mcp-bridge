@@ -73,7 +73,7 @@ Non-login shells often omit `~/.local/bin` (POSIX) or `%USERPROFILE%\.local\bin`
 ### Black-Box Diagnostic Decision Tree
 Always run black-box CLI diagnostics before inspecting source code or logs:
 
-1. **`llama-mcp-install --verify-all`** (or `--doctor`) — Checks Hugging Face URLs, `bridge.ini` & `models.ini`, `llama-server` binary, GGUF files (`--verify-sha` optional), and `/health` (`Standby` when `auto_spawn = true`).
+1. **`llama-mcp-install --verify-all`** (or `--doctor`) — Checks Hugging Face URLs, `bridge.ini` & `models.ini`, `schema_version` (`--migrate-config` if outdated), `llama-server` binary, GGUF files (`--verify-sha` optional), and `/health` (`Standby` when `auto_spawn = true`). Use `--log-format json` on any CLI for machine-parseable logs.
 2. **`llama-mcp-install --selftest`** — Runs a live `ask_digest("ping")` smoke test against `llama-server`.
 3. **`llama-mcp-ps`** — Shows `ONLINE` / `STANDBY (auto-spawn)` / `OFFLINE`, active `residency`, VRAM tier, and `LOADED` / `IDLE` presets.
 4. **`llama-mcp-install --verify-models`** — Checks Hugging Face starter-pack URLs and suggests live GGUF alternatives on 404.

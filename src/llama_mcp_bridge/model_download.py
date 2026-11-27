@@ -13,6 +13,11 @@ from typing import Any
 from rich.progress import Progress
 
 from llama_mcp_bridge.hardware import SystemProfile
+from llama_mcp_bridge.http_resilience import (
+    DEFAULT_HTTP_CLIENT,
+    classify_resource_error,
+    ensure_disk_space,
+)
 from llama_mcp_bridge.presets import (
     get_tier_model_specs,
     probe_model_metadata,
@@ -86,12 +91,15 @@ def _download_spec_list(
 
         part = models_dir / f"{spec['filename']}.part"
         offset = part.stat().st_size if part.exists() else 0
+        size_gb = float(spec.get("size_gb") or 0)
+        if size_gb > 0:
+            ensure_disk_space(models_dir, max(0, int(size_gb * (1024**3)) - offset), spec["filename"])
         req = urllib.request.Request(spec["url"])
         if offset > 0:
             req.add_header("Range", f"bytes={offset}-")
 
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with DEFAULT_HTTP_CLIENT.urlopen(req, timeout=60) as resp:
                 status = getattr(resp, "status", 200)
                 mode = "ab" if status == 206 and offset > 0 else "wb"
                 total = int(resp.headers.get("Content-Length", "0") or 0)
@@ -116,6 +124,11 @@ def _download_spec_list(
                 _verify_and_finalize_part(part, target, spec["filename"], expected_sha256)
             else:
                 raise
+        except (OSError, RuntimeError) as err:
+            classified = classify_resource_error(err, f"downloading {spec['filename']}")
+            if classified is not None:
+                raise classified from err
+            raise
 
 
 def _download_tier_models(
