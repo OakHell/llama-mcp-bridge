@@ -1,268 +1,154 @@
 # Llama MCP Bridge
 
-A cross-platform (Linux, macOS, Windows, FreeBSD) Model Context Protocol (MCP) bridge connecting MCP clients to a local `llama-server` instance. It automatically profiles your GPU VRAM (or CPU fallback) and generates tuned `models.ini` presets—selecting optimal GGUF quantisations, KV-cache precision, and context windows for your exact memory constraints.
+Hardware-aware local LLM MCP bridge powered by `llama.cpp` router mode.
 
-**Design Stance:** `llama-mcp-bridge` pairs Ollama-style zero-friction setup with `llama.cpp`'s native router-mode transparency. Every context window, KV-cache precision, and offload decision is derived from hardware VRAM/RAM and GGUF binary header geometry rather than guesswork. Specialist tools are strictly agency-free—no function calling, subprocesses, or network egress—and are composed from small, inspectable primitives.
+[![Python >=3.11](https://img.shields.io/badge/python-%3E%3D3.11-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/OakHell/llama-mcp-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/OakHell/llama-mcp-bridge/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/badge/release-v1.0.1-green.svg)](https://github.com/OakHell/llama-mcp-bridge/releases/tag/v1.0.1)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Stability Tiers:** The core bridge (`llama-mcp-bridge`, CLI entrypoints, `bridge.ini` / `models.ini` contracts, and core MCP tools) is **`v1.0.0`-stable** and covered by Semantic Versioning (see [STABILITY.md](STABILITY.md)). The opt-in `[enterprise]` extra (`E3` rotating JSONL audit logs, `E7` `/livez` + `/readyz` + `systemd` watchdog probes, and `E11` multi-tenant shared-cache isolation) is **Pre-1.0 Provisional**—verified by automated unit and chaos tests, not yet validated in live multi-tenant production, and excluded from `1.0.0` SemVer stability guarantees until a later `1.x` release.
+[Docs](docs/cli.md) · [Architecture](ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
-## Architecture & Features
+**Requires Python >= 3.11.**
 
-- **VRAM-Aware Auto-Tuning & 6-Architecture GGUF Inspection:** Profiles NVIDIA, AMD ROCm, Apple Silicon, Intel/Vulkan, or CPU fallback and parses GGUF v2/v3 binary headers ([gguf_header.py](src/llama_mcp_bridge/gguf_header.py)) across six attention layouts: MHA/GQA, per-layer GQA variance, alternating Sliding Window Attention (SWA), hybrid SSM recurrent state, DeepSeek MLA (`kv_lora_rank`), and KV-shared layers.
-- **Dynamic `models.ini`-Driven Tool Filtering:** Exposes only configured specialists in `tools/list` alongside always-on `get_bridge_status` and `ask_preset` (which can invoke newly added presets immediately before a client reload). `json_schema` grammar constraints are supported on `ask_digest`, `ask_preset`, and custom `ask_<name>` tools.
-- **Agency-Free Specialist Boundary:** Specialist models have zero tool/function calling, subprocess, or network access; all file and image access is brokered by the bridge within `.gitignore` cascades, `!` negations, `include > ignore` precedence, binary skipping, and smallest-first context budgets.
-- **Output Hygiene & Reasoning Management:** Strips internal reasoning/monologue tags deterministically ([hygiene.py](src/llama_mcp_bridge/hygiene.py)) while preserving fenced code blocks, LaTeX, and structured content.
-- **Lazy Process Supervision & Server-Side Diagnostics:** Spawns `llama-server` on demand, polls `/health`, and classifies OOM vs. cold-swap timeouts directly from captured `llama-server` `stderr` rather than generic HTTP error bodies.
+## What this is
 
-## Hardware & VRAM Tiers
+`llama-mcp-bridge` is a cross-platform (Linux, macOS, Windows, FreeBSD) Model Context Protocol (MCP) server that connects MCP clients to a single router-mode `llama-server` process. It is built for Ollama users who've outgrown Ollama's opinionated defaults without wanting to hand-edit `llama-server` flags.
 
-| Tier | Typical Hardware | KV Cache (`K`/`V`) | `coder` / `coder-long` Context | Parallelism |
-| :--- | :--- | :--- | :--- | :--- |
-| `6gb` | 6 GB GPUs / CPU fallback | `q4_0` / `q4_0` | 8K / 16K | 1 |
-| `8gb` | 8 GB GPUs (e.g. RTX 3070 `sm_86`) | `q8_0` / `q8_0` (`q4_0` long) | 16K / 32K | 1 |
-| `12gb` | 12 GB GPUs | `q8_0` / `q8_0` | 24K / 40K | 1 |
-| `16gb` | 16 GB GPUs / Apple Silicon | `q8_0` / `q8_0` | 32K / 64K | 2 |
-| `24gb+` | 24 GB+ GPUs / Apple Silicon | `q8_0` / `q8_0` | 64K / 128K | 4 |
+## Why I built this
 
-> **CPU-Only Notice:** When no supported GPU (`NVIDIA`, `AMD ROCm`, `Apple Metal`, `Intel/Vulkan`) is detected, the installer falls back to the lightweight `cpu` (`6gb`) preset tier in system RAM. At least **16 GB of system RAM** is recommended, and vision or 32K-context tools will have noticeably slower latency than `ask_digest` and `ask_coder_fast`.
+I started out running local models behind Ollama, and it worked—until I wanted to know *why* a model was spilling into system RAM, or why a coding prompt was eating 30% of its context window on `<think>` tags. Ollama hides those knobs behind opaque modelfiles. Switching to `llama.cpp`'s native router mode gave me exact control over KV-cache quantisation, GPU layer offloading, and per-preset context budgets—at the cost of a wall of CLI flags.
 
-## Quick Start (Guided Setup Wizard)
+So I built `llama-mcp-bridge` to automate the tedious parts while keeping every decision inspectable in plain INI files:
+
+- **Token savings & output hygiene ([`hygiene.py`](src/llama_mcp_bridge/hygiene.py)):** Strips internal reasoning/monologue tags deterministically while preserving fenced code blocks, LaTeX, and structured JSON.
+- **`.gitignore`-brokered file context ([`discovery.py`](src/llama_mcp_bridge/discovery.py)):** Expands files, directories, and globs on the host side within `.gitignore` cascades, `include`/`ignore` rules, binary skipping, and smallest-first character budgets.
+- **GGUF-header-derived tuning ([`gguf_header.py`](src/llama_mcp_bridge/gguf_header.py)):** Inspects GGUF v2/v3 binary headers directly (MHA/GQA, SWA, hybrid SSM, DeepSeek MLA, KV-shared layers) to size KV caches from actual model geometry.
+- **Honest labeling of extras:** Core local inference is `v1.0.1`-stable; opt-in `[enterprise]` features (`--enterprise`) and background service wrappers are clearly marked as provisional until field-validated.
+
+## Who this is for / not for
+
+**For:**
+- Developers who want local specialist models (`digest`, `coder`, `vision`, `reasoner`) wired into Claude Code, Cursor, Cline, Windsurf, Zed, or Antigravity.
+- Workstation users on 6 GB–24 GB+ GPUs (or CPU-only fallback) who want deterministic, inspectable `models.ini` tuning.
+- Teams wanting zero-copy Ollama GGUF blob imports (`--import-ollama`) without re-downloading weights.
+
+**Not for:**
+- Multi-node distributed inference or high-throughput SaaS serving (use vLLM or TGI).
+- Agentic tool-calling inside the local model itself (specialists are strictly agency-free).
+- Zero-config cloud API proxying.
+
+## Quick Start
+
+Preview what the installer will do without touching disk or network:
+
+```bash
+uvx --from git+https://github.com/OakHell/llama-mcp-bridge llama-mcp-install --dry-run
+```
+
+Install and launch the interactive TUI wizard (running `llama-mcp-install` with no flags launches the TUI):
 
 ```bash
 uv tool install git+https://github.com/OakHell/llama-mcp-bridge
-uv tool update-shell
 llama-mcp-install
+llama-mcp-install --download-models
 ```
 
-Running `llama-mcp-install` with no flags automatically launches the interactive `rich` TUI wizard (or pass `--tui` explicitly) to detect your hardware, audit BYO GPU prerequisites, optionally install `llama-server`, configure background services, and print the ready-to-copy `mcp_config.json` snippet and required GGUF model filenames.
+See [docs/install.md](docs/install.md) for parallel install paths (TUI, agent self-bootstrap via `SKILL.md`, non-interactive CLI) and [docs/install-wheel.md](docs/install-wheel.md) for pinned/offline release wheels.
 
-## Agent Self-Bootstrap (`SKILL.md` & `--install-skill`)
-
-Give your coding agent one skill so it can autonomously install, verify, wire, and troubleshoot `llama-mcp-bridge`:
+Verify your setup and wire it into your MCP client:
 
 ```bash
-llama-mcp-install --install-skill          # auto-detects ~/.claude, ~/.gemini/config, ~/.gemini, ~/.cursor
-llama-mcp-install --install-skill claude   # or: antigravity, gemini, cursor, workspace, or <custom-dir>
+llama-mcp-install --doctor      # Standby is normal when auto_spawn = true
+llama-mcp-install --selftest    # Live end-to-end ask_digest('ping') check
 ```
 
-The bundled [skills/llama-mcp-setup/SKILL.md](skills/llama-mcp-setup/SKILL.md) encodes the deterministic bootstrap flow (`--yes` -> `--doctor` -> `--configure-client`) and black-box diagnostic commands (`--doctor` and `llama-mcp-ps`). Pass `--skill-link` to symlink instead of copying.
-
-## Installation & Execution
-
-### Option 1: Global Install from GitHub (End Users)
-
-Installs into an isolated `uv` tool environment and exposes `llama-mcp-bridge` and `llama-mcp-install` globally on `PATH` (required for GUI MCP clients):
-
-```bash
-uv tool install git+https://github.com/OakHell/llama-mcp-bridge
-uv tool update-shell
-```
-
-### Option 2: Global Editable Install from a Local Clone (Active Development)
-
-Exposes the commands globally on `PATH` while reflecting live edits to `src/` immediately:
-
-```bash
-git clone https://github.com/OakHell/llama-mcp-bridge.git
-cd llama-mcp-bridge
-uv tool install --editable .
-uv tool update-shell
-```
-
-### Option 3: Scoped Local Checkout without Global Install (`uv sync` / `uv run`)
-
-Keeps everything inside the local `.venv/` without modifying `~/.local/bin` or `PATH`:
-
-```bash
-uv sync --dev
-uv run llama-mcp-install --dry-run
-uv run pytest -v
-```
-
-> **Zero-install dry run:** You can also run `uvx --from git+https://github.com/OakHell/llama-mcp-bridge llama-mcp-install --dry-run` without installing anything.
-> **BSD Note (`FreeBSD / OpenBSD / NetBSD`):** Because PyPI does not publish binary wheels for `*BSD`, install `rust` and `cmake` via system packages (e.g. `pkg install rust cmake`) before `uv tool install`, and use `--mode source-hermetic` or `--mode system-bin` (upstream `llama.cpp` does not publish prebuilt BSD release archives).
-
-### Non-Interactive / Scripted CLI Flags
-
-| Flag | Description |
-| :--- | :--- |
-| `--mode prebuilt` | Downloads or configures prebuilt `llama.cpp` binaries (default). |
-| `--mode source-hermetic` | Builds a self-contained static `llama-server` from source (`-DBUILD_SHARED_LIBS=OFF -DLLAMA_CURL=OFF`) with scrubbed build env vars and `uvx cmake` fallback. |
-| `--mode source-system` | Builds `llama-server` dynamically (`-DBUILD_SHARED_LIBS=ON`) using system toolchains/env vars and copies built shared libraries into `<workspace>/bin/`. |
-| `--mode system-bin` | Uses an existing `llama-server` binary on `PATH`. |
-| `--dry-run` | Prints planned actions without writing files or executing subprocesses. |
-| `-y`, `--yes` | Auto-confirms `llama-server` installation when undetected. |
-| `--download-models [PRESET ...]` | Downloads curated GGUF starter-pack models for your detected tier, or only specific presets (e.g. `--download-models digest` for lightweight/CPU-only setups). |
-| `--presets PRESET [PRESET ...]` | Limits `models.ini` generation to the specified specialist presets (default: all 9 presets). |
-| `--verify-models` | Verifies Hugging Face URLs for `--tier` (or all tiers) using a 1-hour cache (`--no-cache` to bypass) and suggests live GGUF alternatives on 404. |
-| `--verify-all` | Runs `--verify-models` and `--doctor` together as a single deployment check. |
-| `--tier` | Target VRAM tier (`6gb`, `8gb`, `12gb`, `16gb`, `24gb+`) for `--verify-models`. |
-| `--residency` | Memory residency profile (`stingy`, `moderate`, `snappy`; default `moderate`). |
-| `--models-dir` | Custom directory for GGUF model files (defaults to `<workspace>/models`). |
-| `--import-ollama` | Imports Ollama manifests/blobs into `<workspace>/models` via zero-copy symlinks and GGUF header auto-tuning (`--ollama-dir` to override `~/.ollama/models`). |
-| `--ps` | Shows live server health, active residency, and loaded/idle presets (also `llama-mcp-ps`, supports `--json`). |
-| `--doctor` | Runs an end-to-end diagnostic check of configs, `llama-server`, GGUF files, preset tools, and `/health` (supports `--verify-sha` and `--json`). |
-| `--profile` | Benchmarks configured presets against a live `llama-server` and reports tokens/sec and latency (supports `--json`). |
-| `--selftest` | Runs a live `ask_digest("ping")` smoke test against `llama-server` (supports `--json`). |
-| `--check-update` | Queries Git tags on GitHub to check for a newer SemVer release (supports `--json`). |
-| `--export-config` / `--diff-config` | Prints effective merged `[*]` + `[preset]` `models.ini`, or diffs `models.ini` against tier defaults. |
-| `--model-info PRESET` | Displays effective merged `llama-server` flags and parsed GGUF metadata for a preset (supports `--json`). |
-| `--uninstall` | Removes managed `bin/`, build trees, and background service while preserving `.ini` configs and `.gguf` models (supports `--dry-run` and `--yes`). |
-| `--configure-client` | Prints ready-to-paste `mcpServers` JSON and official setup docs for your coding harness (pass `--apply` to merge-write `"local-ai"` directly into the harness config). |
-| `--tui` | Launches the interactive `rich` TUI setup wizard (also auto-launched on bare `llama-mcp-install` in a TTY). |
-| `--install-service` | Generates an OS-specific user service (`systemd` on Linux, `launchd` on macOS). |
-
-> **Hardware Prerequisites:** `llama-mcp-install` audits your GPU/OS tools (`nvidia-smi`, `nvcc`, `rocminfo`, `vulkaninfo`, `xcode-select`, `cmake`) and warns if any BYO drivers or SDKs are missing before offering to install `llama-server`.
-> **Source Build Caveats:** `--mode source-hermetic` produces an isolated static binary (`-DBUILD_SHARED_LIBS=OFF -DLLAMA_CURL=OFF`), but still requires a host C/C++ compiler (`cl.exe` on Windows, `xcode-select` on macOS) and GPU SDKs (`nvcc`/`hipcc`) for GPU backends. On macOS, `llama-mcp-install` runs ad-hoc `codesign --force --deep -s -` automatically; if Gatekeeper blocks execution, re-run `codesign --force --deep -s - <workspace>/bin/llama-server`. Prefer `--mode prebuilt` or `--mode source-system` for dynamic GPU/system library linking.
-
-## Model Management (`llama-mcp-models`)
-
-Manage, add, or remove specialist presets anytime after installation without re-running the full installer:
-
-- **Interactive Checkbox Selector:** Run `llama-mcp-models` in a terminal to toggle presets with `Up/Down` (or `j/k`), `Space` to toggle `[x]` / `[ ]`, `a` for all/none, and `Enter` to apply (with a numbered fallback when stdin is not a TTY).
-- **List Presets:** `llama-mcp-models list` displays all 9 presets, their `models.ini` status, tier GGUF filenames, disk presence, and sizes.
-- **Add Presets:** `llama-mcp-models add digest coder` (or `--add`) merges the requested presets into `models.ini` without duplicating existing `[section]` headers and downloads their GGUFs.
-- **Remove Presets Safely:** `llama-mcp-models remove vision` (or `--remove`) prompts for confirmation (`-y` / `--yes` skips the prompt; `--dry-run` previews changes), removes the preset sections from `models.ini`, and only deletes `.gguf` / `mmproj` files on disk if no remaining preset in `models.ini` references them.
-- **Custom Models (`--hf` / `--file` & `--tune-mode`):** `llama-mcp-models add my_model --hf <owner>/<repo>[:<quant-or-filename>]` (with automatic `mmproj` detection, `X-Linked-ETag` SHA-256 checksum verification, and resumable `.part` downloads) or `--file <path/to/model.gguf>` (`--mmproj` optional) inspects GGUF binary headers to auto-tune `n-gpu-layers` and `ctx-size` (`--tune-mode conservative|approximate`, default `conservative`), prints a heuristic tuning & client-restart notice, and exposes the preset via `ask_preset` or dynamically registered `ask_<preset>` tools.
-- **Self-Healing URL Verification:** `llama-mcp-install --verify-models` checks Hugging Face starter-pack URLs concurrently (with a 1-hour TTL cache in `<workspace>/.cache/verify_models.json`, bypassable with `--no-cache`) and suggests live GGUF alternatives on 404.
-- **Zero-Copy Ollama Import (`--import-ollama`):** `llama-mcp-install --import-ollama` or `llama-mcp-models --import-ollama` (optional `--ollama-dir`) walks `~/.ollama/models/manifests/**`, **symlinks** (never copies) GGUF and `mmproj` blobs into `<workspace>/models/`, and runs `parse_gguf_header` to auto-tune `models.ini` (rejecting split multi-blob models and warning on safetensors-backed models).
-- **Prune Unreferenced GGUFs (`--prune`):** `llama-mcp-models --prune` removes `.gguf` files in `models_dir` no longer referenced by any `[preset]` in `models.ini` (respecting `--dry-run` and `-y`/`--yes`).
-- **Standalone Config Validation (`llama-mcp-config`):** `llama-mcp-config check <path>` validates `bridge.ini` or `models.ini` syntax, required keys, and referenced file paths standalone.
-
-## Configuration (`LLAMA_MCP_HOME`, `bridge.ini` & `models.ini`)
-
-`llama-mcp-bridge` separates two explicit contracts:
-- **`models.ini`** is `llama-server`'s native router-mode preset file—the full `llama-server` flag surface is delegated verbatim.
-- **`bridge.ini`** is the bridge's orchestration contract (`host`, `port`, `auto_spawn`, `residency`, `models_max`, `sleep_idle_seconds`, `fallback_on_oom`, `health_timeout_s`, `request_timeout_s`, `models_dir`, `models_ini`, `llama_server_bin`).
-
-`LLAMA_MCP_HOME` is a first-class environment variable for targeting any workspace. Resolution precedence:
-
-1. Explicit CLI flag (`--dir` / `--home`).
-2. `LLAMA_MCP_HOME` environment variable (e.g. `LLAMA_MCP_HOME=/mnt/ai`).
-3. Registered global workspace pointer (`~/.config/llama-mcp-bridge/home` on POSIX, `%APPDATA%\llama-mcp-bridge\home` on Windows) set via `llama-mcp-install --register` (clear with `--unregister`).
-4. **POSIX (Linux, macOS, FreeBSD):** `~/.llama-mcp-bridge` / **Windows:** `%LOCALAPPDATA%\llama-mcp-bridge`
-
-- **Residency Profiles (`residency`):** `stingy` (`15s` idle, `1` model), `moderate` (`120s` idle, `1`–`2` models; default), `snappy` (`600s` idle, `2`–`3` models on `12gb+`). Set `models_max` (`> 0`) or `sleep_idle_seconds` (`>= 0`) in `bridge.ini` to override these defaults explicitly.
-- **OOM & Timeout Recovery (`fallback_on_oom`):** Classifies VRAM OOM vs. cold-swap timeouts from `llama-server` `stderr`; set `fallback_on_oom = true` in `bridge.ini` to run a structured degradation loop (retrying text requests on `digest` and prepending a fallback notice; image requests note that images were dropped).
-- **Config-as-Contract & Tinkerability:** Hand-edited `[preset]` sections in `models.ini` are preserved across re-installs and `--install-service`; `llama-mcp-models remove` uses reference-counted GGUF deletion; `--uninstall` preserves `.ini` and `.gguf` files; `--dry-run` and `--doctor` validate without mutating.
-
-## MCP Client Configuration (`mcp_config.json`)
+Add to your MCP client's `mcpServers` config (then reload/restart the client):
 
 ```json
 {
   "mcpServers": {
     "local-ai": {
-      "command": "llama-mcp-bridge",
-      "env": {
-        "LLAMA_MCP_HOME": "/mnt/ai"
-      }
+      "command": "llama-mcp-bridge"
     }
   }
 }
 ```
 
-### Specialist Tools
+Hit an issue? Jump to [Troubleshooting](docs/troubleshooting.md).
 
-Spanning distinct model families decorrelates role failures across extraction, coding, vision, and reasoning:
+## Specialist Tools
 
-| Tool | Model Family | Reasoning Budget | Role |
-| :--- | :--- | :--- | :--- |
-| `ask_digest` | Liquid LFM3 | `0` | High-speed structured JSON/fact extraction |
-| `ask_coder_fast` | Qwen 2.5 Coder | `0` | Rapid boilerplate and targeted edits |
-| `ask_coder` | Qwen 3.5 | `2048` | Standard code generation and refactoring |
-| `ask_coder_long` | Qwen 3.5 | `2048` | Multi-file codebase analysis (tier-scaled context, 16K–128K) |
-| `ask_vision` | MiniCPM-V 4.6 | `0` | Fast UI inspection, screenshots, and OCR |
-| `ask_vision_deep` | Qwen 3.5 (VLM) | `1024` | Complex visual reasoning and diagrams |
-| `ask_reasoner` | IBM Granite 4.2 | `2048` | Mathematical, algorithmic, and logical reasoning |
-| `ask_analyst` | Mistral / Ministral 3 | `2048` | Deep technical auditing and edge-case analysis |
-| `ask_generalist` | Google Gemma 4 | `1024` | General technical writing and synthesis |
+| Tool | Role | Model Family |
+| :--- | :--- | :--- |
+| `ask_digest` | High-speed structured JSON/fact extraction | Liquid LFM3 |
+| `ask_coder_fast` | Rapid boilerplate and targeted edits | Qwen 2.5 Coder |
+| `ask_coder` | Standard code generation and refactoring | Qwen 3.5 |
+| `ask_coder_long` | Multi-file codebase analysis (16K–128K) | Qwen 3.5 |
+| `ask_vision` | Fast UI inspection, screenshots, and OCR | MiniCPM-V 4.6 |
+| `ask_vision_deep` | Complex visual reasoning and diagrams | Qwen 3.5 (VLM) |
+| `ask_reasoner` | Mathematical, algorithmic, and logical reasoning | IBM Granite 4.2 |
+| `ask_analyst` | Deep technical auditing and edge-case analysis | Mistral / Ministral 3 |
+| `ask_generalist` | General technical writing and synthesis | Google Gemma 4 |
 
-### Dispatcher Tools
+See [docs/tools.md](docs/tools.md) for dispatcher tools (`ask_preset`, `ask_batch`), `get_bridge_status`, `json_schema` grammar constraints, and the Reasoning Management stack.
 
-| Tool | Target | Config | Role |
-| :--- | :--- | :--- | :--- |
-| `ask_preset` | Any configured preset | Per `models.ini` | Immediate invocation of any `[preset]` (supports `stream=True`, `timeout_s`) |
-| `ask_batch` | Any configured preset | Per `models.ini` | Parallel prompt batching bounded by the preset's `parallel` slot count; when `parallel = 1`, `asyncio.Semaphore(1)` serializes requests and returns aggregate results in submission order |
+## Hardware Tiers
 
-### Diagnostics / Meta
+| Tier | Typical Hardware | KV Cache (`K`/`V`) | `coder` / `coder-long` Context | Parallelism |
+| :--- | :--- | :--- | :--- | :--- |
+| `6gb` | 6 GB GPUs / CPU fallback (`>=16 GB` RAM recommended) | `q4_0` / `q4_0` | 8K / 16K | 1 |
+| `8gb` | 8 GB GPUs (e.g. RTX 3070) | `q8_0` / `q8_0` (`q4_0` long) | 16K / 32K | 1 |
+| `12gb` | 12 GB GPUs (e.g. RTX 3060/4070) | `q8_0` / `q8_0` | 32K / 64K | 2 |
+| `16gb` | 16 GB GPUs / 16–24 GB Apple Silicon | `q8_0` / `q8_0` | 32K / 64K | 2 |
+| `24gb+` | 24 GB+ GPUs / 32 GB+ Unified Memory | `q8_0` / `q8_0` | 64K / 128K | 4 |
 
-| Tool | Target | Config | Role |
-| :--- | :--- | :--- | :--- |
-| `get_bridge_status` | — | — | Read-only JSON health, active VRAM tier, and warm model residency check |
+> **Note:** On `24gb+`, `coder`, `coder-fast`, and `coder-long` swap to `Qwen 2.5-Coder-14B` (`qwen2.5-coder-14b-instruct-q4_k_m.gguf`).
 
-### Reasoning Management
-
-All presets use `reasoning-format = deepseek` with a shared `reasoning-budget-message` cutoff string so thinking models emit a final answer before hitting token limits, paired with deterministic tag stripping in [hygiene.py](src/llama_mcp_bridge/hygiene.py). See [docs/reasoning-management.md](docs/reasoning-management.md), [docs/gguf-auto-tuning.md](docs/gguf-auto-tuning.md), [docs/failure-classification.md](docs/failure-classification.md), and [ARCHITECTURE.md](ARCHITECTURE.md) for deep dives.
-
-## Enterprise Extra (`[enterprise]` / `--enterprise`)
-
-Install the optional extra via `uv tool install "llama-mcp-bridge[enterprise]"` (or `pip install "llama-mcp-bridge[enterprise]"`) and pass `--enterprise` (or set `enterprise_mode = true` in `bridge.ini` / `LLAMA_MCP_ENTERPRISE=1`) to unlock:
-- **Rotating JSONL Audit Log (`E3`):** `AuditLogger` (`--audit-log`) records tool invocations (`input_sha256`, `files_accessed`, `duration_ms`, `status`) without raw prompt payloads.
-- **Liveness/Readiness & Watchdog (`E7`):** Exposes `/livez` and `/readyz` on the metrics server plus pure-Python `sd_notify` (`--watchdog`).
-- **Multi-Tenant Isolation (`E11`):** `--tenant` + `--shared-models-dir` isolate per-tenant config/logs (`0o700` on POSIX) while sharing read-only GGUF blobs under advisory file locks.
-
-> [!WARNING]
-> **Unvalidated in Production:** While `E3`, `E7`, and `E11` are verified by automated unit and fault-injection tests, **none of these features have been tested, deployed, or reported on in a real production environment yet**. Audit them in staging before relying on them in production.
-
-## Advanced Runtime & Multi-Workspace Options
-
-- **Opt-In Streaming (`stream=True`) & Progress:** Specialist tools default to complete-response mode (`stream=False`), with `stream=True` SSE accumulation and `notifications/progress` heartbeats after `30s` available when requested.
-- **Hot-Reload (`notifications/tools/list_changed`):** Changes to `models.ini` are detected automatically on disk and emit `notifications/tools/list_changed` to supporting MCP clients; `ask_preset` can also call newly added presets immediately.
-- **Per-Call Overrides:** Specialist tools accept `stream=True` and `timeout_s=<seconds>`.
-- **Access Control (`allowed_presets`):** Comma-separated preset names in `bridge.ini` restrict which presets are exposed and callable.
-- **API Key Auth (`api_key` / `LLAMA_MCP_API_KEY`):** Passes `--api-key` to `llama-server` and attaches `Authorization: Bearer` headers to all HTTP probes and inference calls.
-- **Prometheus Metrics (`metrics_port` / `--metrics` / `--metrics-port`):** Exposes `/metrics` and `/healthz` via `metrics.py` (`--metrics` defaults to port `9090`).
-- **Structured JSON Logging (`--log-format json` / `log_format`):** Emits single-line JSON log records across all CLI entrypoints.
-- **Config Schema & Migration (`schema_version` / `--migrate-config`):** `bridge.ini` tracks `schema_version = 1`; `--doctor` warns on unversioned configs and `llama-mcp-install --migrate-config` upgrades with a `.bak` backup.
-- **Network Resilience & Resource Guards (`http_resilience.py`):** GitHub/Hugging Face HTTP requests use jittered exponential backoff and a circuit breaker (`failure_threshold=5`), with pre-flight disk-space checks and actionable `ENOSPC`/`EMFILE`/thread-limit diagnostics.
-- **Stability & Signed Releases:** See [STABILITY.md](STABILITY.md) for SemVer/CLI stability guarantees; tagged releases include Sigstore signatures and CycloneDX 1.5 SBOMs (`.github/workflows/release.yml`).
-- **Named Multi-Workspaces:** Register named profiles with `llama-mcp-install --dir /path --register-name work` and target them with `--workspace-name work` or `LLAMA_MCP_WORKSPACE=work`.
-- **Warmup Preloading (`--warmup` / `warmup_presets`):** Asynchronously preloads configured presets on `llama-mcp-bridge` startup.
-- **Release Signature Verification (`signing.py`):** Verifies downloaded `llama.cpp` release archives against `.bundle`/`.sig`/`.asc` assets via `cosign` or `gpg` when available (`--no-verify-signature` to skip).
-
-## Tradeoffs & Non-Goals
-
-1. **Single `llama-server` process per workspace:** All presets share one router-mode `llama-server` instance per workspace.
-2. **Complete-response default (`stream=False`):** Specialist tools return assembled responses by default rather than token-by-token streams (`stream=True` is opt-in).
-3. **Client tool-list caching:** `ask_preset` allows immediate access to newly added presets, though most MCP hosts cache `tools/list` until client reload/restart.
-4. **Opt-in `[enterprise]` extra is unvalidated in production:** `E3`, `E7`, and `E11` are test-verified only and remain provisional.
-5. **Single-user workstation default:** Base installs isolate a single workspace per user unless multi-tenant enterprise mode is configured.
-6. **Curated starter pack is Hugging Face–centric:** Built-in tier presets pull GGUF artifacts from Hugging Face (`--hf` and `--file` handle custom repos and local GGUFs).
-
-## Service Installation (`--install-service`)
-
-- **Linux (`systemd`):** Writes `~/.config/systemd/user/llama-server.service` when `systemd` is active (`systemctl --user enable --now llama-server.service`).
-- **Linux (non-`systemd` / Alpine / Void / Gentoo):** Installs a deduplicated `@reboot` user crontab entry (`# llama-mcp-bridge`) and prints an OpenRC reference snippet.
-- **macOS (`launchd`):** Writes `com.llama-server.plist` in `LLAMA_MCP_HOME`.
-- **Windows:** Writes `<workspace>/start-llama-server.bat` and registers a `LlamaServer` logon task via `schtasks`.
-- **BSD (FreeBSD / OpenBSD / NetBSD):** Installs a deduplicated `@reboot` user crontab entry (`# llama-mcp-bridge`) and prints a FreeBSD `rc.d` (`daemon(8)`) template.
-
-## Development
-
-Requires **Python `>=3.11`**. GitHub Actions CI runs on `ubuntu-latest`, `macos-latest`, `windows-latest`, and a real FreeBSD 15 VM (`vmactions/freebsd-vm`) executing `uv sync --dev`, `uv run ruff check .`, `uv run mypy src`, `uv run pytest -v`, and `uv run llama-mcp-install --dry-run`.
+## Common Operations
 
 ```bash
-uv run ruff check .
-uv run mypy src
-uv run pytest -v
+llama-mcp-models add --hf owner/repo:Q4_K_M --preset my-model
+llama-mcp-models remove my-model
+llama-mcp-install --import-ollama
+llama-mcp-install --doctor
+llama-mcp-ps
+llama-mcp-install --check-update
 ```
 
-## Troubleshooting / FAQ
+See [docs/models.md](docs/models.md) and [docs/cli.md](docs/cli.md) for the full command reference.
 
-- **Command not found after `uv tool install` (especially on Windows):** Run `uv tool update-shell` and reopen your terminal, or prepend `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows) to `PATH`.
-- **`--doctor` shows `Server /health: PASS (Standby)`:** This is expected when `auto_spawn = true`; `llama-server` starts lazily on the first MCP tool call.
-- **Newly added custom `ask_<name>` tool is missing from `tools/list`:** Restart or reload your MCP client to refresh `tools/list`, or call `ask_preset(preset="<name>", ...)` immediately without restarting.
-- **VRAM / RAM Out-of-Memory (OOM) errors:** Lower `ctx-size` in `models.ini`, switch `residency = stingy` in `bridge.ini`, or set `fallback_on_oom = true` to retry text prompts on `digest`.
-- **Hugging Face 404 during model download:** Run `llama-mcp-install --verify-models` to check curated URLs and get live Hugging Face GGUF search alternatives.
+## Configuration
 
-## Contributing
+The bridge reads `bridge.ini` (`[bridge]` with `schema_version = 1`) and `models.ini` from `LLAMA_MCP_HOME` (defaulting to `~/.llama-mcp-bridge` on POSIX or `%LOCALAPPDATA%\llama-mcp-bridge` on Windows). See [docs/config.md](docs/config.md) for all keys, residency profiles, and cross-platform path examples.
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, verification commands (`ruff`, `mypy`, `pytest`), and pull request guidelines, and [SECURITY.md](SECURITY.md) for vulnerability reporting.
+## Security Model
 
-## Roadmap
+All specialist models run strictly **agency-free**: they have zero function-calling, subprocess, or network-egress capabilities. File and image context is brokered by the bridge within `.gitignore` cascades, structural `DEFAULT_IGNORES` (`.git`, `.venv`, `node_modules`, `__pycache__`), and character budgets.
 
-See [ROADMAP.md](ROADMAP.md) for current release status and [SHIPPED.md](SHIPPED.md) for all shipped releases (`v0.1.0`–`v1.0.0`).
+`llama-server` binds to `127.0.0.1` by default, archive extraction enforces Zip Slip / Tar traversal and size bounds, and release downloads support Sigstore/Cosign verification. See [SECURITY.md](SECURITY.md) for the full threat model and supported versions.
 
-## License
+## Enterprise & Stability
 
-MIT — see [LICENSE](LICENSE).
+Core `llama-mcp-bridge` (`v1.0.1`) is covered by Semantic Versioning in [STABILITY.md](STABILITY.md). Opt-in enterprise capabilities (`--enterprise`, `E3` rotating JSONL audit logs, `E7` `/livez` + `/readyz` + `systemd` watchdog probes, `E11` multi-tenant isolation) are documented in [docs/enterprise.md](docs/enterprise.md).
+
+> **Warning:** `--enterprise` (`E3`, `E7`, `E11`) is verified by automated unit and chaos tests only and has **not yet been field-validated in a live multi-tenant production environment**.
+
+## Troubleshooting FAQ
+
+1. **`--doctor` shows `Standby`:** Normal when `auto_spawn = true`; `llama-server` spawns lazily on the first tool call.
+2. **New `ask_<name>` tool missing in client:** Restart/reload your MCP client, or call `ask_preset(preset="<name>", ...)` immediately.
+3. **VRAM OOM or cold-swap timeout:** Set `residency = stingy` or `fallback_on_oom = true` in `bridge.ini`, or lower `ctx-size` in `models.ini`.
+4. **Windows `llama-server.exe` missing DLLs:** Re-run `llama-mcp-install --mode prebuilt -y` to co-locate companion `cudart` DLLs.
+5. **macOS Gatekeeper / `codesign` errors:** Run `llama-mcp-install --mode prebuilt -y` to apply ad-hoc `codesign --force --deep -s -`.
+
+See [docs/troubleshooting.md](docs/troubleshooting.md) for detailed diagnostics.
+
+## Documentation & License
+
+- [docs/cli.md](docs/cli.md) · [docs/config.md](docs/config.md) · [docs/tools.md](docs/tools.md) · [docs/models.md](docs/models.md)
+- [docs/install.md](docs/install.md) · [docs/install-wheel.md](docs/install-wheel.md) · [docs/install-bsd.md](docs/install-bsd.md)
+- [docs/advanced.md](docs/advanced.md) · [docs/services.md](docs/services.md) · [docs/enterprise.md](docs/enterprise.md) · [docs/troubleshooting.md](docs/troubleshooting.md)
+- [ARCHITECTURE.md](ARCHITECTURE.md) · [STABILITY.md](STABILITY.md) · [TRACKER.md](TRACKER.md) · [SHIPPED.md](SHIPPED.md) · [SKILL.md](skills/llama-mcp-setup/SKILL.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md)
+
+MIT License — see [LICENSE](LICENSE).

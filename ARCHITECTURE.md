@@ -60,3 +60,14 @@ flowchart TD
 3. **Lazy Supervision & Auth:** `bridge.py` invokes `LlamaSupervisor.ensure_running()`, which checks `/health` and auto-spawns `llama-server --models-preset <models.ini>` (with `--api-key` when configured), streaming output to `llama-server.log` and a bounded stderr tail.
 4. **Inference, Streaming & Hygiene:** Requests hit `http://<host>:<port>/v1/chat/completions` with `"stream": false` or `"stream": true` (SSE token accumulation) and per-call `timeout_s`, emitting `notifications/progress` after 30s. Responses pass through `hygiene.py` (`clean_mcp_output`), while `metrics.py` records counters and latency histograms for `GET /metrics`.
 5. **Failure Classification & OOM Fallback:** On HTTP 500/503 or transport failure, `supervisor.py` (`classify_inference_error`) inspects the captured `llama-server` `stderr` tail to distinguish VRAM/RAM OOM from timeouts and, when `fallback_on_oom = true`, retries text-only on `digest`.
+
+## Lifecycle & Integration Seams
+
+1. **`llama-server` Auto-Spawn Lifecycle (`supervisor.py`):** When `auto_spawn = true`, `LlamaSupervisor._start_server()` launches `llama-server` with `--host`, `--port`, `--models-preset`, `--models-dir`, and tier+residency `--models-max` / `--sleep-idle-seconds` (or explicit `bridge.ini` overrides), then polls `/health` until ready.
+2. **`models.ini` Hot-Reload (`bridge.py`):** `bridge.py` checks `models.ini` mtime on disk and emits `notifications/tools/list_changed` when presets change; `ask_preset` can also call newly added presets immediately.
+3. **`fallback_on_oom` Flow (`bridge.py`):** If `llama-server` returns HTTP 500 with OOM indicators in captured `stderr` and `fallback_on_oom = true`, text requests automatically retry on the lightweight `digest` preset.
+4. **Four Integration Seams:**
+   - **MCP Host ↔ `bridge.py`:** JSON-RPC over stdio (`fastmcp`).
+   - **`bridge.py` ↔ `llama-server`:** Local HTTP (`/v1/chat/completions`, `/health`) on `127.0.0.1`.
+   - **`installer.py` / `models_cli.py` ↔ Filesystem:** `bridge.ini`, `models.ini`, and GGUF weights under `LLAMA_MCP_HOME`.
+   - **`bridge.py` ↔ `enterprise/`:** Opt-in lazy import gated by `--enterprise` / `enterprise_mode = true`.

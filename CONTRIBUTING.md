@@ -39,3 +39,11 @@ You can also use the `Makefile` shortcuts (`make check` or `make test`, `make li
 
 ## Enterprise Extra (`src/llama_mcp_bridge/enterprise/`)
 - `audit.py` (`E3`), `probes.py` (`E7`), `tenant.py` (`E11`): opt-in `[enterprise]` modules, never imported unless `--enterprise` / `enterprise_mode = true`.
+
+## Makefile Targets
+- `make test`: Run `uv run pytest -v`
+- `make lint`: Run `uv run ruff check .`
+- `make typecheck`: Run `uv run mypy src`
+- `make doctor`: Run `uv run llama-mcp-install --doctor`
+- `make verify-all`: Run `uv run llama-mcp-install --verify-all`
+- `make check`: Run `lint`, `typecheck`, and `test`
