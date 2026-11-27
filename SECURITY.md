@@ -6,9 +6,9 @@ Security fixes are applied to the latest `main` release line:
 
 | Version | Supported |
 | --- | --- |
-| `0.14.x` | Yes |
-| `0.13.x` | Critical fixes only |
-| `< 0.13.0` | No |
+| `1.0.x` | Yes |
+| `0.14.x` | Critical fixes only |
+| `< 0.14.0` | No |
 
 ## Reporting a Vulnerability
 

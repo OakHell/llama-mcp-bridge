@@ -903,7 +903,7 @@ wheels = [
 
 [[package]]
 name = "llama-mcp-bridge"
-version = "0.14.0.post2"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },

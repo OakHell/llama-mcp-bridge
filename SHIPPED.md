@@ -59,9 +59,12 @@ Included `bridge.ini` raw file bytes alongside `st_mtime_ns` in `load_config()`'
 ### `v0.12.0` — Streaming, Hot-Reload, Auth, Metrics & Multi-Workspace (Shipped)
 Added opt-in SSE streaming (`stream=True`, `F1`), `models.ini` hot-reload with `notifications/tools/list_changed` (`F2`), parallel `ask_batch` tool bounded by `parallel` slots (`F6`), `notifications/progress` heartbeats after 30s (`F7`), `allowed_presets` access control (`F14`), and per-call `timeout_s` overrides (`F22`). Shipped `--api-key` / `LLAMA_MCP_API_KEY` Bearer auth (`F12`), Prometheus `/metrics` & `/healthz` sidecar (`metrics.py`, `F13`), named multi-workspace pointers (`--register-name` / `--workspace-name`, `F15`), `--warmup` preset preloading (`F17`), and `cosign`/`gpg` release signature verification (`signing.py`, `F20`).
 
+### `v0.13.0` — Core Supply Chain, Telemetry & Resilience (Shipped)
+Added `.github/workflows/release.yml` with `uv build`, CycloneDX 1.5 SBOM generation (`E5`), and Sigstore signing (`E6`), plus [STABILITY.md](STABILITY.md) (`E8`). Shipped `--log-format json` (`logging_utils.py`, `E1`), `--metrics` CLI alias (`E2`), `schema_version` + `--migrate-config` (`E4`), `ResilientHttpClient` exponential backoff & circuit breaker (`http_resilience.py`, `E9`), pre-flight disk-space & `ENOSPC`/`EMFILE`/thread-limit guards (`E10`), and fault-injection chaos tests (`E12`).
+
 ### `v0.14.0` — Opt-In `[enterprise]` Extra (`E3`, `E7`, `E11`)
 Added opt-in `[enterprise]` packaging extra (`--enterprise` / `enterprise_mode = true`), rotating JSONL audit logging (`enterprise/audit.py`, `E3`), `/livez` + `/readyz` + `systemd` `sd_notify` watchdog probes (`enterprise/probes.py`, `E7`), and multi-tenant workspace isolation with advisory file locks (`enterprise/tenant.py`, `E11`).
 - **`v0.14.0.post2`:** Shortened `AF_UNIX` test socket path under `/tmp` for macOS/FreeBSD 104-byte `sun_path` compatibility.
 
-### `v0.13.0` — Core Supply Chain, Telemetry & Resilience (Shipped)
-Added `.github/workflows/release.yml` with `uv build`, CycloneDX 1.5 SBOM generation (`E5`), and Sigstore signing (`E6`), plus [STABILITY.md](STABILITY.md) (`E8`). Shipped `--log-format json` (`logging_utils.py`, `E1`), `--metrics` CLI alias (`E2`), `schema_version` + `--migrate-config` (`E4`), `ResilientHttpClient` exponential backoff & circuit breaker (`http_resilience.py`, `E9`), pre-flight disk-space & `ENOSPC`/`EMFILE`/thread-limit guards (`E10`), and fault-injection chaos tests (`E12`).
+### `v1.0.0` — Ceremonial Stability Graduation
+Locked in the [STABILITY.md](STABILITY.md) `1.x` contract across all 5 CLI entrypoints, `--json` schemas, `bridge.ini` `schema_version`, and core MCP tools (`158 / 158` tracker items shipped; `[enterprise]` remains **Provisional / Unvalidated in Production**).

@@ -2,6 +2,8 @@
 
 `llama-mcp-bridge` follows [Semantic Versioning 2.0.0](https://semver.org/).
 
+> **Stability Tiers:** The core bridge (`llama-mcp-bridge`, CLI entrypoints, `bridge.ini` / `models.ini` contracts, and core MCP tools) is **`v1.0.0`-stable** and covered by Semantic Versioning. The opt-in `[enterprise]` extra (`E3` rotating JSONL audit logs, `E7` `/livez` + `/readyz` + `systemd` watchdog probes, and `E11` multi-tenant shared-cache isolation) is **Pre-1.0 Provisional**—verified by automated unit and chaos tests, not yet validated in live multi-tenant production, and excluded from `1.0.0` SemVer stability guarantees until a later `1.x` release.
+
 ## Version Lines
 
 - **`0.x` (Pre-1.0):** Minor releases (`0.13.0`, `0.14.0`) may introduce new CLI flags, configuration keys, and MCP tools. Breaking changes to existing documented flags or schemas are avoided where possible and called out in `SHIPPED.md`.

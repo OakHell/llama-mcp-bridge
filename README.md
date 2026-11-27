@@ -4,6 +4,8 @@ A cross-platform (Linux, macOS, Windows, FreeBSD) Model Context Protocol (MCP) b
 
 **Design Stance:** `llama-mcp-bridge` pairs Ollama-style zero-friction setup with `llama.cpp`'s native router-mode transparency. Every context window, KV-cache precision, and offload decision is derived from hardware VRAM/RAM and GGUF binary header geometry rather than guesswork. Specialist tools are strictly agency-free—no function calling, subprocesses, or network egress—and are composed from small, inspectable primitives.
 
+> **Stability Tiers:** The core bridge (`llama-mcp-bridge`, CLI entrypoints, `bridge.ini` / `models.ini` contracts, and core MCP tools) is **`v1.0.0`-stable** and covered by Semantic Versioning (see [STABILITY.md](STABILITY.md)). The opt-in `[enterprise]` extra (`E3` rotating JSONL audit logs, `E7` `/livez` + `/readyz` + `systemd` watchdog probes, and `E11` multi-tenant shared-cache isolation) is **Pre-1.0 Provisional**—verified by automated unit and chaos tests, not yet validated in live multi-tenant production, and excluded from `1.0.0` SemVer stability guarantees until a later `1.x` release.
+
 ## Architecture & Features
 
 - **VRAM-Aware Auto-Tuning & 6-Architecture GGUF Inspection:** Profiles NVIDIA, AMD ROCm, Apple Silicon, Intel/Vulkan, or CPU fallback and parses GGUF v2/v3 binary headers ([gguf_header.py](src/llama_mcp_bridge/gguf_header.py)) across six attention layouts: MHA/GQA, per-layer GQA variance, alternating Sliding Window Attention (SWA), hybrid SSM recurrent state, DeepSeek MLA (`kv_lora_rank`), and KV-shared layers.
@@ -174,8 +176,18 @@ Spanning distinct model families decorrelates role failures across extraction, c
 | `ask_reasoner` | IBM Granite 4.2 | `2048` | Mathematical, algorithmic, and logical reasoning |
 | `ask_analyst` | Mistral / Ministral 3 | `2048` | Deep technical auditing and edge-case analysis |
 | `ask_generalist` | Google Gemma 4 | `1024` | General technical writing and synthesis |
+
+### Dispatcher Tools
+
+| Tool | Target | Config | Role |
+| :--- | :--- | :--- | :--- |
 | `ask_preset` | Any configured preset | Per `models.ini` | Immediate invocation of any `[preset]` (supports `stream=True`, `timeout_s`) |
-| `ask_batch` | Any configured preset | Per `models.ini` | Parallel prompt batching bounded by the preset's `parallel` slot count |
+| `ask_batch` | Any configured preset | Per `models.ini` | Parallel prompt batching bounded by the preset's `parallel` slot count; when `parallel = 1`, `asyncio.Semaphore(1)` serializes requests and returns aggregate results in submission order |
+
+### Diagnostics / Meta
+
+| Tool | Target | Config | Role |
+| :--- | :--- | :--- | :--- |
 | `get_bridge_status` | — | — | Read-only JSON health, active VRAM tier, and warm model residency check |
 
 ### Reasoning Management
@@ -192,15 +204,10 @@ Install the optional extra via `uv tool install "llama-mcp-bridge[enterprise]"` 
 > [!WARNING]
 > **Unvalidated in Production:** While `E3`, `E7`, and `E11` are verified by automated unit and fault-injection tests, **none of these features have been tested, deployed, or reported on in a real production environment yet**. Audit them in staging before relying on them in production.
 
-## Tradeoffs & Non-Goals
+## Advanced Runtime & Multi-Workspace Options
 
 - **Opt-In Streaming (`stream=True`) & Progress:** Specialist tools default to complete-response mode (`stream=False`), with `stream=True` SSE accumulation and `notifications/progress` heartbeats after `30s` available when requested.
 - **Hot-Reload (`notifications/tools/list_changed`):** Changes to `models.ini` are detected automatically on disk and emit `notifications/tools/list_changed` to supporting MCP clients; `ask_preset` can also call newly added presets immediately.
-- **Single `llama-server` Process:** All presets share one router-mode `llama-server` instance per workspace.
-- **Curated Starter Pack & Backends:** Curated starter models are Hugging Face GGUFs; AMD prebuilt selection scores ROCm/HIP and Vulkan assets; CPU-only `6gb` tier setups trade higher latency for broad compatibility.
-
-### Advanced Runtime & Multi-Workspace Options
-
 - **Per-Call Overrides:** Specialist tools accept `stream=True` and `timeout_s=<seconds>`.
 - **Access Control (`allowed_presets`):** Comma-separated preset names in `bridge.ini` restrict which presets are exposed and callable.
 - **API Key Auth (`api_key` / `LLAMA_MCP_API_KEY`):** Passes `--api-key` to `llama-server` and attaches `Authorization: Bearer` headers to all HTTP probes and inference calls.
@@ -212,6 +219,15 @@ Install the optional extra via `uv tool install "llama-mcp-bridge[enterprise]"` 
 - **Named Multi-Workspaces:** Register named profiles with `llama-mcp-install --dir /path --register-name work` and target them with `--workspace-name work` or `LLAMA_MCP_WORKSPACE=work`.
 - **Warmup Preloading (`--warmup` / `warmup_presets`):** Asynchronously preloads configured presets on `llama-mcp-bridge` startup.
 - **Release Signature Verification (`signing.py`):** Verifies downloaded `llama.cpp` release archives against `.bundle`/`.sig`/`.asc` assets via `cosign` or `gpg` when available (`--no-verify-signature` to skip).
+
+## Tradeoffs & Non-Goals
+
+1. **Single `llama-server` process per workspace:** All presets share one router-mode `llama-server` instance per workspace.
+2. **Complete-response default (`stream=False`):** Specialist tools return assembled responses by default rather than token-by-token streams (`stream=True` is opt-in).
+3. **Client tool-list caching:** `ask_preset` allows immediate access to newly added presets, though most MCP hosts cache `tools/list` until client reload/restart.
+4. **Opt-in `[enterprise]` extra is unvalidated in production:** `E3`, `E7`, and `E11` are test-verified only and remain provisional.
+5. **Single-user workstation default:** Base installs isolate a single workspace per user unless multi-tenant enterprise mode is configured.
+6. **Curated starter pack is Hugging Face–centric:** Built-in tier presets pull GGUF artifacts from Hugging Face (`--hf` and `--file` handle custom repos and local GGUFs).
 
 ## Service Installation (`--install-service`)
 
@@ -245,7 +261,7 @@ Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for local setu
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for upcoming milestones (`v0.10.0`–`v0.12.0`) and [SHIPPED.md](SHIPPED.md) for all shipped releases (`v0.1.0`–`v0.10.0`).
+See [ROADMAP.md](ROADMAP.md) for current release status and [SHIPPED.md](SHIPPED.md) for all shipped releases (`v0.1.0`–`v1.0.0`).
 
 ## License
 
