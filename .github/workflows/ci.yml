@@ -44,14 +44,15 @@ jobs:
         with:
           usesh: true
           prepare: |
-            pkg install -y python312 uv rust py312-maturin \
+            pkg install -y python312 uv rust \
               py312-pydantic2 py312-pydantic-core py312-cryptography \
-              py312-rpds-py py312-pyyaml py312-cffi py312-pytest
+              py312-rpds-py py312-pyyaml py312-cffi py312-pytest \
+              py312-requests py312-rich py312-pathspec py312-anyio \
+              py312-httpx py312-jsonschema py312-starlette py312-uvicorn \
+              py312-platformdirs py312-python-dotenv
           run: |
             export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
-            uv venv --python python3.12 --system-site-packages
-            uv pip install hatchling editables
-            uv pip install --no-build-isolation -e .
-            .venv/bin/python -m pytest -v
-            .venv/bin/llama-mcp-install --dry-run
-            .venv/bin/llama-mcp-install --install-service --dry-run
+            uv pip install --system --break-system-packages -e .
+            pytest -v
+            llama-mcp-install --dry-run
+            llama-mcp-install --install-service --dry-run
