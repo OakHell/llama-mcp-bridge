@@ -465,9 +465,11 @@ def _run_tui_wizard() -> None:
             _download_tier_models(profile, models_dir, dry_run=False, presets=selected_presets)
 
         if not had_bridge_ini:
+            from llama_mcp_bridge.config import CURRENT_SCHEMA_VERSION
+
             bridge_ini.write_text(
-                f"[bridge]\nworkspace = {workspace}\nmodels_dir = {models_dir}\n"
-                f"models_ini = {models_ini_path}\nresidency = {residency}\n",
+                f"[bridge]\nschema_version = {CURRENT_SCHEMA_VERSION}\nworkspace = {workspace}\n"
+                f"models_dir = {models_dir}\nmodels_ini = {models_ini_path}\nresidency = {residency}\n",
                 encoding="utf-8",
             )
 

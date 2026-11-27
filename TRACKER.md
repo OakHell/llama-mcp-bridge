@@ -1,13 +1,101 @@
 # Issue & Feature Tracker — `llama-mcp-bridge`
 
-## P0 — Security & Correctness
+> **Release Ledger:** Items marked `[x]` shipped in `v1.0.0` / `v1.0.1` (see `SHIPPED.md` and `CHANGELOG.md`). Open `[ ]` items below represent the unified code, test, and documentation backlog.
+
+---
+
+## Open — P0 (Critical Security, User-Path Breakage & README First-Screen)
+- [x] **B13 — 24 GB+ `--presets coder` / `--presets coder-long` download vs. `models.ini` mismatch (`presets.py`):**
+- [x] **S6 — `include` patterns bypass `DEFAULT_IGNORES` (`discovery.py`):**
+- [x] **S7 — Symlink target `chmod` traversal in `resolve_tenant_workspace` (`enterprise/tenant.py`):**
+- [ ] **D31 — Rewrite README opening pitch (`README.md`, D-01):** Replace the three-clause technical opening with a two-sentence elevator pitch naming the target user ("Ollama users who've outgrown Ollama's opinionated defaults without wanting to hand-edit `llama-server` flags").
+- [ ] **D32 — Add first-person origin story section (`README.md`, D-02):** Add the "Why I built this" narrative (~250 words covering Ollama token savings, conservative reasoning-block stripping, `.gitignore`-brokered file attachment, and GGUF-header-derived tuning) right after the pitch, replacing the abstract "Design Stance" prose.
+- [ ] **D33 — Hoist Quick Start install commands to the first screen (`README.md`, D-03):** Move the 3-command Quick Start immediately after the pitch + origin story so visitors don't scroll past ~1,200 words of orientation before seeing how to install.
+- [ ] **D34 — Add condensed "Who this is for / not for" section (`README.md`, D-04):** Move "Tradeoffs & Non-Goals" from position 15 to position 4–5, condensed to 3–4 crisp bullets each.
+- [ ] **D35 — Document the pinned release-wheel / offline install path (`README.md`, `docs/install-wheel.md`, D-05):** Add the reproducible release-wheel install path as a fourth parallel installation option and link `docs/install-wheel.md` from Quick Start.
+
+---
+
+## Open — P1 (High-Impact Reliability, Concurrency, Downloads & README De-Bloating)
+- [ ] **B14 — Disk preflight uses stale registry `size_gb` (`model_download.py`):** `_download_spec_list` computes required disk space from static `spec["size_gb"]` (skipping the check entirely when `size_gb == 0` on custom `--hf`/`--file` models) instead of using `size_bytes` returned by `probe_model_metadata`. Prefer HEAD `Content-Length` `size_bytes`, falling back to `size_gb` only when HEAD size is unavailable.
+- [ ] **B15 — HTTP 416 treated unconditionally as download complete (`model_download.py`):** `_download_spec_list` treats any HTTP `416 Range Not Satisfiable` on an existing `.part` file as completion without checking `Content-Range: bytes */<total>`, which can finalize an oversized `.part` if an upstream file shrank and lacks a SHA-256 ETag. Verify `offset == total` from `Content-Range` before finalizing.
+- [ ] **B16 — No per-chunk retry/resume inside GGUF download loop (`model_download.py`):** A single transient socket read failure in `resp.read(1024 * 1024)` aborts multi-gigabyte downloads instead of retrying from the current `.part` byte offset with backoff.
+- [ ] **B17 — Unhandled HTTP/JSON exceptions in `resolve_hf_gguf_repo` (`presets.py`):** Unlike sibling helpers (`probe_model_metadata`, `search_hf_gguf_models`, `verify_model_url`), `resolve_hf_gguf_repo` does not catch `URLError`, `HTTPError`, `JSONDecodeError`, or `TimeoutError`, leaking raw tracebacks on `llama-mcp-models add --hf`.
+- [ ] **B18 — `ensure_running()` holds `self._lock` across 30s health polling (`supervisor.py`):** Holding `self._lock` during `_poll_until_healthy()` blocks concurrent `stop()`, `is_healthy()`, `get_health_status()`, and `atexit` cleanup for up to 30 seconds. Release `self._lock` after spawning the subprocess and poll outside the lock.
+- [ ] **B19 — Broad `"metal"` substring in `_OOM_SIGNATURES` (`supervisor.py`):** Bare `"metal"` matches non-OOM Metal shader compilation or device-init errors on macOS, misclassifying them as OOM. Narrow to explicit allocation failures (e.g., `"metal: out of memory"`).
+- [ ] **B20 — Unsynchronized `_MODELS_INI_STATE` and per-call disk reads (`bridge.py`):** Guard snapshot-compare-swap in `check_and_reload_models_ini` with `_TOOL_REG_LOCK` and cache by `(st_mtime_ns, st_size)` before reading `models.ini` bytes on every `query_llama` call.
+- [ ] **B21 — `check_readiness` does not catch `health_check` exceptions (`enterprise/probes.py`):** Wrap `health_check()` in `try/except` so supervisor or config errors return `(503, {"status": "error", "reason": ...})` instead of an unhandled exception.
+- [ ] **B22 — Windows `msvcrt.locking` on zero-byte lock files (`enterprise/tenant.py`):** `msvcrt.locking(fd, msvcrt.LK_LOCK, 1)` can raise `PermissionError` / `Errno 13` on an empty newly created file and times out after ~10s unlike blocking POSIX `flock`. Ensure at least 1 byte exists before locking and document/handle retry semantics.
+- [ ] **D36 — Extract 25-row CLI flag table to `docs/cli.md` (`README.md`, `docs/cli.md`, D-06):** Move the ~600-word CLI reference table to `docs/cli.md`, leaving a 3-line pointer to `llama-mcp-install --help` and `docs/cli.md`.
+- [ ] **D37 — Extract full MCP tool tables & reasoning stack to `docs/tools.md` (`README.md`, `docs/tools.md`, D-07):** Move the Specialist, Dispatcher, and Diagnostics tables plus Reasoning Management to `docs/tools.md`; keep a compact 9-row specialist summary table (`name` + one-line role) in `README.md`.
+- [ ] **D38 — Extract 15-bullet "Advanced Runtime & Multi-Workspace" section to `docs/advanced.md` (`README.md`, `docs/advanced.md`, D-08):** Move auth headers, named workspaces, warmup, and signature verification reference details to `docs/advanced.md`.
+- [ ] **D39 — Restructure Installation into four parallel paths (`README.md`, `docs/install.md`, `docs/install-agent.md`, D-09):** Present TUI wizard, agent self-bootstrap (`SKILL.md`), non-interactive CLI, and release wheel as parallel installation paths rather than sequential steps, moving full multi-option install steps into `docs/install.md` and `docs/install-agent.md`.
+- [ ] **D40 — Deduplicate Enterprise warning (`README.md`, `docs/enterprise.md`, D-10):** Keep a single two-sentence provisional warning in `README.md` and move E3/E7/E11 operational details to `docs/enterprise.md`.
+- [ ] **D41 — Add top-of-README status badges (`README.md`, D-11):** Add Python `>=3.11`, GitHub Actions CI status, latest release tag, and license badges under the title.
+- [ ] **D42 — Hoist Troubleshooting FAQ and link from Quick Start (`README.md`, `docs/troubleshooting.md`, D-12):** Move condensed 5-item Troubleshooting FAQ higher in `README.md` (with a direct link from Quick Start) and expand full troubleshooting in `docs/troubleshooting.md`.
+- [ ] **D43 — Record and embed a 30-second terminal demo (`README.md`, D-13):** Capture a clean `asciinema` recording of `llama-mcp-install` running on a fresh 8 GB setup and link/embed it near Quick Start.
+
+---
+
+## Open — P2 (Medium Edge Cases, Security Hardening & Docs Accuracy)
+- [ ] **S8 — Unescaped `</file>` delimiters in `_build_prompt_with_files` (`discovery.py`):** File contents containing literal `</file>` break the `<file path="...">...</file>` prompt framing, and paths containing `<`/`>` are unescaped. Escape `<`/`>` in paths and escape or neutralize closing `</file>` tags inside file content.
+- [ ] **S9 — Raw `files_accessed` paths logged in `AuditLogger.record` (`enterprise/audit.py`):** `input_text` is hashed to prevent payload leakage, but `files_accessed` stores full filesystem paths verbatim. Hash file paths (or store basenames only) to prevent directory-structure leakage.
+- [ ] **M21 — Paths containing glob metacharacters (`[`, `?`, `*`) fail literal lookup (`discovery.py`):** `_expand_target_files` runs `glob_mod.has_magic()` before checking `Path(expanded_str).exists()`, causing literal paths like `/home/user/[draft]/notes.md` to fail with `"Glob pattern matched no files"`. Check literal existence first.
+- [ ] **M22 — Byte-read vs. character-count budget mismatch in `_build_prompt_with_files` (`discovery.py`):** Reading `remaining + 1` bytes per file while subtracting `len(content)` Unicode characters allows multibyte UTF-8 text to exceed `max_total_chars` (and token budgets on smaller context models). Align read/slice budgeting in characters (and verify callers size `max_total_chars` from preset `ctx-size`).
+- [ ] **M23 — `models.ini` mutations strip comments and blank lines (`presets.py`):** `merge_models_ini`, `merge_custom_preset_ini`, and `remove_models_from_ini` re-serialize via `ConfigParser`, discarding user comments (`#`, `;`). Either preserve untouched sections/comments via line-preserving edits or document the behavior explicitly in `docs/config.md`.
+- [ ] **M24 — `merge_custom_preset_ini` allows reserved section name `"DEFAULT"` (`presets.py`):** Reject `"DEFAULT"` (case-insensitive) alongside `""` and `"*"` so `llama-mcp-models add DEFAULT` cannot silently inject `ConfigParser` section defaults.
+- [ ] **M25 — `prune_unreferenced_models` ignores `.part`, `.gguf.tmp`, and uppercase `.GGUF` (`presets.py`):** Extend cleanup matching (or add `--include-partials`) so crashed downloads and case-insensitive filenames are pruned cleanly.
+- [ ] **M26 — Non-atomic cache write in `verify_tier_models` (`presets.py`):** Write JSON cache updates to a sibling `.tmp` file and atomically replace via `Path.replace()` to avoid torn reads under concurrent runs.
+- [x] **M27 — `llama-mcp-install` omits `schema_version = 1` on fresh `bridge.ini` generation (`installer.py`, `bridge.example.ini`):**
+- [ ] **M28 — `_stderr_tail` never populated in `LlamaSupervisor` (`supervisor.py`):** Because `Popen` redirects `stderr=subprocess.STDOUT` to the log file, `proc.stderr` is `None` and `_start_stderr_reader()` returns immediately, leaving `get_stderr_tail()` to read the merged log file. Either capture `stderr` via pipe + tee to log, or align `README.md` / `docs/failure-classification.md` wording to `"server-log tail"`.
+- [ ] **D44 — Footnote `24gb+` model family swap in Hardware Tiers table (`README.md`, D-14):** Add a footnote explaining that `24gb+` swaps `coder`, `coder-fast`, and `coder-long` to `Qwen 2.5-Coder-14B` rather than keeping the smaller coder models.
+- [ ] **D45 — Verify & document `24gb+` `coder-long` 131K VRAM headroom (`README.md`, `presets.py`, D-15, N-18):** Benchmark `[coder-long]` at `131072` ctx with `q4_0` V-cache on 24 GB VRAM (`--model-info` + `--profile`); reduce to `98304` or annotate headroom caveats if OOM occurs.
+- [ ] **D46 — Hoist `uvx` zero-install dry-run into Quick Start (`README.md`, D-16):** Move `uvx --from git+... llama-mcp-install --dry-run` out of a buried blockquote into Quick Start as the "try without installing" one-liner.
+- [ ] **D47 — Promote "Agency-Free Specialist Boundary" to top-level Security Model section (`README.md`, D-17, D-18):** Elevate the zero-agency / `.gitignore`-brokered access guarantee into a dedicated two-paragraph **Security Model** section and link directly to `SECURITY.md`.
+- [ ] **D48 — Align version & stability metadata across `README.md`, `STABILITY.md`, and `pyproject.toml` (`README.md`, `pyproject.toml`, D-19, D-20):** Collapse the two-paragraph stability callout into a concise pointer to `STABILITY.md`, update `pyproject.toml` classifier from `Development Status :: 4 - Beta` to `Development Status :: 5 - Production/Stable`, and align version strings (`v1.0.1`+).
+- [ ] **D49 — Expand `ARCHITECTURE.md` and `docs/` deep dives or soften links (`ARCHITECTURE.md`, `docs/*.md`, D-21, D-22):** Expand `ARCHITECTURE.md` (module map, spawn lifecycle, hot-reload sequence, OOM fallback flow) and either flesh out `failure-classification.md`, `gguf-auto-tuning.md`, and `reasoning-management.md` or fold them into `docs/tools.md` / `docs/config.md` so no link points to a thin stub.
+- [ ] **D50 — Populate or retire `ROADMAP.md` and link `TRACKER.md` + `SHIPPED.md` from `README.md` (`README.md`, `ROADMAP.md`, D-23, D-24):** Either populate `ROADMAP.md` with concrete milestone themes or replace it with a pointer to `TRACKER.md`, and surface `TRACKER.md` and `SHIPPED.md` in the `README.md` Documentation footer.
+- [ ] **D51 — Document CPU fallback tier (`6gb`) and RAM recommendation (`README.md`, D-25):** Explicitly state that `llama-mcp-install` falls back to the `6gb`/CPU tier when no supported GPU is detected and recommends ≥16 GB system RAM.
+- [ ] **D52 — Extract Configuration reference (`LLAMA_MCP_HOME`, `bridge.ini`, `models.ini`) to `docs/config.md` (`README.md`, `docs/config.md`):** Move the ~500-word configuration reference from `README.md` into `docs/config.md` and keep a concise 100-word overview + link in `README.md`.
+- [ ] **D53 — Extract Model Management reference (6 subsections) to `docs/models.md` (`README.md`, `docs/models.md`):** Move full add/remove/import/prune/custom model management sections to `docs/models.md`, keeping common one-liner commands in `README.md`.
+- [ ] **D54 — Extract Service Installation reference (4 bullets) to `docs/services.md` (`README.md`, `docs/services.md`):** Move `systemd`, `launchd`, Windows `schtasks`, `crontab`, and BSD `rc.d` details to `docs/services.md`.
+
+---
+
+## Open — P3 (Polish, Packaging, Style & Hygiene)
+- [ ] **N13:** Rename corrupted `.part` files to `.part.corrupt` (or keep behind a flag) on SHA-256 mismatch in `_download_spec_list` (`model_download.py`) for post-mortem diagnosis.
+- [ ] **N14:** Export `audit`, `probes`, and `tenant` submodules in `src/llama_mcp_bridge/enterprise/__init__.py` so `llama_mcp_bridge.enterprise.audit` and `from llama_mcp_bridge.enterprise import *` match `__all__`.
+- [ ] **N15:** Source Hugging Face `User-Agent` version dynamically from `importlib.metadata.version("llama-mcp-bridge")` instead of hardcoded `llama-mcp-bridge/0.1.0`.
+- [ ] **N16:** Clarify or remove the empty `enterprise = []` optional extra in `pyproject.toml` and document that `--enterprise` is a runtime flag (`README.md`, `docs/enterprise.md`).
+- [ ] **N17:** Verify `.gitignore` excludes `__pycache__/` and confirm `git ls-files | grep __pycache__` is empty.
+- [ ] **N18:** Verify `llama.cpp` runtime handling of `reasoning-budget-message = ""` for `coder-fast` and `6 GB` CPU prefill latency for `digest` at `65536` ctx (`presets.py`).
+- [ ] **N19:** Add a `--doctor --verify-models` size-drift warning when HEAD `X-Linked-Size` diverges by >20% from registry `size_gb` (`presets.py`).
+- [ ] **D55 — Tighten prose style and reduce em-dash/abstraction density (`README.md`, D-26, D-27):** Edit section intros for direct, concrete phrasing (~1,200-word landing page budget).
+- [ ] **D56 — Clarify TUI wizard auto-launch behaviour in Quick Start (`README.md`, D-28):** State explicitly whether `llama-mcp-install` with no flags launches the interactive TUI wizard, matching the section heading.
+- [ ] **D57 — Extract BSD installation notes to `docs/install-bsd.md` (`README.md`, `docs/install-bsd.md`, D-29):** Move platform-specific BSD install details out of `README.md` into `docs/install-bsd.md` with a one-line pointer in Installation.
+- [ ] **D58 — Replace GitHub-only `[!WARNING]` admonition with portable Markdown blockquote (`README.md`, D-30):** Use standard `> **Warning:** ...` syntax so PyPI and non-GitHub renderers display warnings cleanly.
+- [ ] **D59 — Surface `CONTRIBUTING.md` link and `Python >= 3.11` requirement near top of `README.md` (`README.md`, D-31, D-32):** Add a top-level links bar (`Docs` · `Architecture` · `Contributing` · `Security`) and state `Python >= 3.11` right above Quick Start.
+
+---
+
+## Open — Testing & Tooling Gaps
+- [x] **T26 — Add `tests/test_presets.py` with tier × preset invariant:**
+- [x] **T27 — Expand `tests/test_discovery.py` (`discovery.py`):**
+- [ ] **T28 — Add `tests/test_model_download.py` & `tests/test_enterprise.py`:** Cover HEAD `size_bytes` preflight (`B14`), HTTP 416 `Content-Range` validation (`B15`), chunk retry/resume (`B16`), tenant symlink rejection (`S7`), Windows empty-file `msvcrt.locking` (`B22`), and `check_readiness` error handling (`B21`).
+- [ ] **T29 — Audit `service_install.py` coverage & refactor test suite structure:** Verify `test_cross_platform.py` covers all 5 service targets (`systemd`, `launchd`, `schtasks`, `crontab`, BSD `rc.d`), split `test_cross_platform.py` by platform/subsystem, group version-tagged tests (`test_v010`…`test_v090`) by feature, and centralize shared fixtures in `tests/conftest.py`.
+- [ ] **T30 — Verify `Makefile` parity with CI and add `make verify-all` (`Makefile`):** Ensure `make test`, `make lint`, and `make typecheck` mirror `.github/workflows/` and add `make verify-all` (`--doctor` + `--selftest`).
+
+---
+
+## Completed — P0 — Security & Correctness (`v1.0.0` / `v1.0.1`)
 - [x] **S1 — Archive extraction path-traversal defense (`installer.py`):** `_extract_archive` uses `zipfile.extractall` and `tarfile.extractall`, which will write outside `dest_dir` if an archive contains `../` entries or absolute paths. Validate every archive member's resolved target path stays strictly inside `dest_dir` before extraction.
 - [x] **S2 — Archive extraction size and entry-count bounds (`installer.py`):** Enforce configurable ceilings on total extracted bytes (e.g. `2 GiB`) and total file count (e.g. `5,000` entries) inside `_extract_archive` to prevent zip bombs or corrupted release archives from exhausting disk/inodes.
 - [x] **S3 — Windows WMI `AdapterRAM` >4 GB overflow (`installer.py`):** `_probe_windows_wmi` reads `Win32_VideoController.AdapterRAM` (`uint32`), which overflows/wraps at 4 GB and misclassifies 8 GB–24 GB AMD/Intel GPUs as `6gb`. Query 64-bit `HardwareInformation.qwMemorySize` from the Windows display adapter registry (`HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\000*`) when `nvidia-smi` is absent, falling back to `AdapterRAM` only if unavailable.
 - [x] **S4 — Make `--apply` opt-in in `SKILL.md` (`skills/llama-mcp-setup/SKILL.md`):** Step 3 currently instructs agents to run `--configure-client <harness> --apply` by default. Restate Step 3 so the agent prints the `mcpServers` JSON snippet (`llama-mcp-install --configure-client <harness>`) by default and only runs `--apply` when the user explicitly authorizes modifying their harness config.
 - [x] **S5 — Require absolute binary path for `@reboot` crontab (`installer.py`):** `_install_reboot_crontab` currently falls back to bare `"llama-server"` if `cfg.llama_server_bin` is unset. Cron runs with a minimal `PATH`, so a bare binary name can resolve to the wrong binary or fail silently. Refuse to install the `@reboot` cron entry unless `server_bin` resolves to an existing absolute path.
 
-## P1 — User-Affecting Bugs
+## Completed — P1 — User-Affecting Bugs (`v1.0.0` / `v1.0.1`)
+- [x] **B0 — Pass `--host`, `--port`, `--models-preset`, `--models-dir`, and tier-resolved residency flags on auto-spawn (`supervisor.py`, `config.py` — shipped in `v1.0.1`):** `LlamaSupervisor._start_server()` now forwards `--host`, `--port`, `--models-preset`, `--models-dir`, and tier+residency `--models-max` / `--sleep-idle-seconds` (with `bridge.ini` overrides) to `llama-server`.
 - [x] **B1 — Parenthesize `_select_llama_release_asset` operator precedence (`installer.py`):** Explicitly parenthesize `(profile.gpu_vendor == "nvidia" and "cuda" in name) or (profile.gpu_vendor in ("amd", "intel") and "vulkan" in name)` so future scoring additions cannot silently break precedence.
 - [x] **B2 — Add AMD ROCm scoring branch (`installer.py`):** Add `rocm` / `hip` token scoring in `_select_llama_release_asset` for `profile.gpu_vendor == "amd"` alongside `vulkan` so AMD users get ROCm prebuilt assets when `llama.cpp` ships them.
 - [x] **B3 — Include BSD in GPU detection (`installer.py`):** Update `detect_hardware` from `elif os_name in ("linux", "windows"):` to include `"freebsd"` (and BSD variants where `nvidia-smi` is available) instead of falling through unconditionally to the CPU tier.
@@ -20,7 +108,7 @@
 - [x] **B11 — Explicit image-drop notice on vision OOM fallback (`bridge.py`):** When an image request falls back to text-only `digest` on OOM, update the notice string to explicitly state `"(text-only; images dropped)"`.
 - [x] **B12 — Clear error when `cmake` and `uvx` are both missing (`installer.py`):** Raise `RuntimeError("cmake not found; install cmake or uvx, or use --mode prebuilt")` before `subprocess.run` instead of letting `["cmake"]` fail with an opaque `FileNotFoundError`.
 
-## P2 — Medium Edge Cases
+## Completed — P2 — Medium Edge Cases (`v1.0.0`)
 - [x] **M1 — Expand `_cleanup_harness_mcp_configs` to all 7 harnesses (`installer.py`):** Mirror `_resolve_harness_config_paths` so `cline`, `windsurf`, and `zed` are cleaned up on `--uninstall` alongside `antigravity`, `claude-code`, and `cursor`.
 - [x] **M2 — Delete empty `mcpServers` object on cleanup (`installer.py`):** Remove the parent `"mcpServers"` key from harness JSON configs when removing `"local-ai"` leaves `"mcpServers": {}` empty.
 - [x] **M3 — Consolidate duplicate image data-URI encoders (`bridge.py`):** Merge `_encode_image_data_uri` and `_encode_image_to_data_uri` into a single helper.
@@ -42,7 +130,7 @@
 - [x] **M19 — Preserve key case in `_persist_server_bin` (`installer.py`):** Use `ConfigParser(default_section=None, interpolation=None)` with `optionxform = str` so mixed-case keys in `bridge.ini` round-trip intact.
 - [x] **M20 — Print change summary in `_run_tui_wizard` (`installer.py`):** Log what changed vs. what was preserved when re-running the TUI wizard on an existing workspace.
 
-## P3 — Polish & Nits
+## Completed — P3 — Polish & Nits (`v1.0.0`)
 - [x] **N1:** Remove redundant `os.X_OK` check alongside `sys.platform == "win32"` in `_run_doctor` (`installer.py`).
 - [x] **N2:** Remove unused `server_url` field from `BridgeConfig` (`bridge.py`) or wire it up.
 - [x] **N3:** Remove unused `distro_family` field from `SystemProfile` (`installer.py`) or wire it up.
@@ -56,7 +144,7 @@
 - [x] **N11:** Add PyPI `classifiers` to `pyproject.toml`.
 - [x] **N12:** Remove dead `_MODEL_LOCK` and unused `import threading` in `bridge.py`.
 
-## Features
+## Completed — Features (`v1.0.0`)
 - [x] **F1 — Optional streaming support:** Add opt-in streaming in `query_llama` and MCP tool handlers (`"stream": True`).
 - [x] **F2 — Hot-reload `models.ini` via `notifications/tools/list_changed`:** Emit MCP tool-list change notifications when `models.ini` updates without requiring a client restart.
 - [x] **F3 — `--verify-all` CLI flag:** Combine `--verify-models` and `--doctor` into a single deployment check.
@@ -80,7 +168,7 @@
 - [x] **F21 — `--check-update` via Git tags:** Query `git ls-remote --tags https://github.com/OakHell/llama-mcp-bridge`, parse SemVer tags, and compare against installed `pyproject.toml` version.
 - [x] **F22 — Optional per-call `timeout_s` override** on MCP tool invocations.
 
-## Chores
+## Completed — Chores (`v1.0.0`)
 - [x] **C1:** Consolidate `_encode_image_data_uri` and `_encode_image_to_data_uri` (`bridge.py`).
 - [x] **C2:** Add `src/llama_mcp_bridge/py.typed` PEP 561 marker.
 - [x] **C3:** Add `mypy` (or `pyright`) static type-checking job to `.github/workflows/`.
@@ -103,7 +191,8 @@
 - [x] **C20:** Add `ARCHITECTURE.md` (or module call-graph diagram in `README.md`).
 - [x] **C21:** Add `docs/` deep-dive guides (reasoning-budget stack, GGUF header auto-tuning, stderr failure classifier).
 
-## Testing Gaps
+## Completed — Testing Gaps (`v1.0.0` / `v1.0.1`)
+- [x] **T0:** Unit tests in `tests/test_supervisor_spawn_args.py` verifying `--host`, `--port`, `--models-preset`, `--models-dir`, and tier+residency `--models-max` / `--sleep-idle-seconds` (`v1.0.1`).
 - [x] **T1:** Unit test `_select_llama_release_asset` with AMD ROCm release assets.
 - [x] **T2:** Unit test `detect_hardware` on BSD (`sys.platform = "freebsd14"`).
 - [x] **T3:** Unit test `_probe_windows_wmi` with >4 GB VRAM (64-bit registry path vs. 32-bit `AdapterRAM` overflow).
@@ -130,7 +219,7 @@
 - [x] **T24:** Add real FreeBSD VM CI job (`vmactions/freebsd-vm` on `ubuntu-latest` with `cache-after-prepare: true`) running full `pytest` suite and `llama-mcp-install` dry-runs.
 - [x] **T25:** Optional end-to-end `--selftest` on FreeBSD VM against pkg-installed `llama.cpp` (`system-bin` mode).
 
-## Documentation Gaps
+## Completed — Documentation Gaps (`v1.0.0`)
 - [x] **D1:** Add a 3–4 sentence **Design Stance** paragraph in `README.md` right after the intro (Ollama ease + `llama.cpp` transparency; hardware/geometry-derived tuning; agency-free specialist boundary; small composable primitives).
 - [x] **D2:** Add an explicit **Tradeoffs & Non-Goals** section in `README.md` (no streaming, reload required for new `ask_<name>` discovery in `tools/list`, HF-only curated set, AMD prebuilt Vulkan default, single `llama-server` process, CPU-only `6gb` tier latency).
 - [x] **D3:** State in `README.md` that `models.ini` is `llama-server`'s native router-mode preset file (full `llama-server` flag surface delegated verbatim).
@@ -162,7 +251,7 @@
 - [x] **D29:** Create `.github/ISSUE_TEMPLATE/` (bug report, feature request) and `.github/PULL_REQUEST_TEMPLATE.md`.
 - [x] **D30:** Create `ARCHITECTURE.md` with module call graph and data-flow diagram.
 
-## Deferred / Long-Term (Enterprise Positioning)
+## Completed — Enterprise Positioning (`v1.0.0`)
 - [x] **E1:** Structured JSON logging mode (`--log-format json`).
 - [x] **E2:** Prometheus `/metrics` sidecar endpoint (`--metrics`).
 - [x] **E3:** Rotating JSONL audit log of tool invocations.
@@ -182,3 +271,4 @@
 - **Windows `os.access(..., os.X_OK)` (Not a bug):** Works on Windows; redundant check tracked as `N1`.
 - **`remove_models_from_ini` path traversal (Not a bug):** `.name` strips directories; documentation tracked as `M6`.
 - **`_install_reboot_crontab` line filter (Not a bug):** Properly scoped to `# llama-mcp-bridge` (uninstall bug is tracked separately as `B6`).
+- **T-001 Orphaned 9B at `24gb+` (Corrected):** Full `--download-models` at `24gb+` still uses the 9B model for `[vision-deep]`; only selective `--presets coder` / `--presets coder-long` breaks (tracked as `B13`).

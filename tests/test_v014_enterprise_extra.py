@@ -142,6 +142,17 @@ def test_e11_tenant_isolation_and_advisory_lock(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="Invalid tenant name"):
         resolve_tenant_workspace(tmp_path, "../escape")
 
+    if os.name != "nt":
+        target_dir = tmp_path / "external_target"
+        target_dir.mkdir()
+        os.chmod(target_dir, 0o755)
+        tenants_dir = tmp_path / "tenants"
+        tenants_dir.mkdir(exist_ok=True)
+        (tenants_dir / "sym-tenant").symlink_to(target_dir)
+        with pytest.raises(ValueError, match="symlinked"):
+            resolve_tenant_workspace(tmp_path, "sym-tenant")
+        assert (target_dir.stat().st_mode & 0o777) == 0o755
+
     lock_file = tmp_path / "shared" / ".download.lock"
     with advisory_file_lock(lock_file):
         assert lock_file.exists()

@@ -376,6 +376,9 @@ def get_tier_model_specs(
     has_dedicated_vision_deep = any(s["role"] == "vision-deep" for s in specs)
     wanted_roles: set[str] = set()
     for p in presets:
+        if tier == "24gb+" and p in ("coder", "coder-long"):
+            wanted_roles.add("coder-fast")
+            continue
         wanted_roles.add(p)
         if p == "vision":
             wanted_roles.add("vision-mmproj")

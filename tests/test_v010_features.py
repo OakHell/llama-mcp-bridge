@@ -111,7 +111,7 @@ def test_t16_persist_server_bin_preserves_sections_and_case(tmp_path: Path) -> N
         (None, None, True, {"keep.py"}),
         (["keep.py"], None, True, set()),
         (["keep.py"], ["keep.py"], True, {"keep.py"}),
-        (None, ["ignored.log", "node_modules/pkg.js"], True, {"keep.py", "ignored.log", "pkg.js"}),
+        (None, ["ignored.log", "node_modules/pkg.js"], True, {"keep.py", "ignored.log"}),
         (None, None, False, {"keep.py", "ignored.log"}),
     ],
 )

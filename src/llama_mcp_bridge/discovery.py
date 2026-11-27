@@ -287,6 +287,8 @@ def _expand_target_files(
 
     filtered: list[Path] = []
     for file_path, rel_path, git_ignored in candidates:
+        if _matches_any_pattern(rel_path, set(DEFAULT_IGNORES)):
+            continue
         if include_set and _matches_any_pattern(rel_path, include_set):
             filtered.append(file_path)
             continue

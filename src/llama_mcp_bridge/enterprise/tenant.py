@@ -24,8 +24,15 @@ def validate_tenant_name(tenant: str) -> str:
 def resolve_tenant_workspace(base_workspace: Path, tenant: str) -> Path:
     """Return <base_workspace>/tenants/<tenant>/ with 0o700 permissions on POSIX."""
     safe_tenant = validate_tenant_name(tenant)
-    tenant_dir = base_workspace / "tenants" / safe_tenant
+    tenants_root = base_workspace / "tenants"
+    if tenants_root.is_symlink():
+        raise ValueError(f"Refusing symlinked tenants root: {tenants_root}")
+    tenant_dir = tenants_root / safe_tenant
+    if tenant_dir.is_symlink():
+        raise ValueError(f"Refusing symlinked tenant directory: {tenant_dir}")
     tenant_dir.mkdir(parents=True, exist_ok=True)
+    if tenant_dir.is_symlink():
+        raise ValueError(f"Refusing symlinked tenant directory: {tenant_dir}")
     if os.name != "nt":
         try:
             os.chmod(tenant_dir, 0o700)
