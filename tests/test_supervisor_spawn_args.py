@@ -136,3 +136,45 @@ def test_bridge_ini_arbitrary_models_max_and_sleep_idle_overrides(tmp_path: Path
     cmd = popen.call_args.args[0]
     assert cmd[cmd.index("--models-max") + 1] == "5"
     assert cmd[cmd.index("--sleep-idle-seconds") + 1] == "1800"
+
+
+def test_fresh_bridge_ini_writes_llama_server_bin_schema_and_commented_defaults(
+    tmp_path: Path,
+) -> None:
+    """B23: Fresh bridge.ini generation writes llama_server_bin, schema_version=1, and commented defaults."""
+    from llama_mcp_bridge.config import CURRENT_SCHEMA_VERSION, load_config
+    from llama_mcp_bridge.installer import _run_tui_wizard
+
+    bin_path = tmp_path / "bin" / "llama-server"
+    bin_path.parent.mkdir(parents=True, exist_ok=True)
+    bin_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    (tmp_path / "models").mkdir(exist_ok=True)
+
+    profile = SimpleNamespace(
+        os_name="linux",
+        arch="x86_64",
+        gpu_vendor="nvidia",
+        backend="cuda",
+        vram_gb=8.0,
+        ram_gb=32.0,
+        tier="8gb",
+        recommended_mode="system-bin",
+    )
+    with (
+        patch.dict("os.environ", {"LLAMA_MCP_HOME": str(tmp_path)}),
+        patch("llama_mcp_bridge.installer.detect_hardware", return_value=profile),
+        patch("llama_mcp_bridge.installer._find_llama_server", return_value=str(bin_path)),
+        patch("llama_mcp_bridge.models_cli.select_presets_interactive", return_value=["digest"]),
+        patch("llama_mcp_bridge.installer.Prompt.ask", side_effect=[str(tmp_path), str(tmp_path / "models"), "moderate"]),
+        patch("llama_mcp_bridge.installer.Confirm.ask", side_effect=lambda q, **kw: "Proceed" in q),
+    ):
+        _run_tui_wizard()
+
+    ini_text = (tmp_path / "bridge.ini").read_text(encoding="utf-8")
+    assert f"schema_version = {CURRENT_SCHEMA_VERSION}" in ini_text
+    assert f"llama_server_bin = {bin_path}" in ini_text
+    for key in ("# host = 127.0.0.1", "# port = 8080", "# auto_spawn = true", "# models_max = 0"):
+        assert key in ini_text
+    cfg = load_config(tmp_path)
+    assert cfg.schema_version == CURRENT_SCHEMA_VERSION
+    assert cfg.llama_server_bin == str(bin_path)

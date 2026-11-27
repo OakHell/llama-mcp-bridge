@@ -17,6 +17,8 @@
 ---
 
 ## Open — P1 (High-Impact Reliability, Concurrency, Downloads & README De-Bloating)
+
+- [x] **B23 — Fresh `bridge.ini` generation omits `llama_server_bin` and commented defaults (`installer.py`):** Always write `llama_server_bin` when a binary is resolved (including `system-bin` and `--tui`), stamp `schema_version = 1`, and include commented defaults aligned with `bridge.example.ini`.
 - [ ] **M29 — Persist resolved `llama_server_bin` and commented defaults in generated `bridge.ini` (`installer.py`):** Fresh `bridge.ini` files omit `llama_server_bin` when `--mode system-bin` is used and omit commented defaults for `host`, `port`, `auto_spawn`, `models_max`, `sleep_idle_seconds`, and `fallback_on_oom`. Write `llama_server_bin` whenever a binary path is detected and include concise commented defaults aligned with `bridge.example.ini`.
 - [ ] **B14 — Disk preflight uses stale registry `size_gb` (`model_download.py`):** `_download_spec_list` computes required disk space from static `spec["size_gb"]` (skipping the check entirely when `size_gb == 0` on custom `--hf`/`--file` models) instead of using `size_bytes` returned by `probe_model_metadata`. Prefer HEAD `Content-Length` `size_bytes`, falling back to `size_gb` only when HEAD size is unavailable.
 - [ ] **B15 — HTTP 416 treated unconditionally as download complete (`model_download.py`):** `_download_spec_list` treats any HTTP `416 Range Not Satisfiable` on an existing `.part` file as completion without checking `Content-Range: bytes */<total>`, which can finalize an oversized `.part` if an upstream file shrank and lacks a SHA-256 ETag. Verify `offset == total` from `Content-Range` before finalizing.

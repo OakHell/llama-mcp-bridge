@@ -467,11 +467,28 @@ def _run_tui_wizard() -> None:
         if not had_bridge_ini:
             from llama_mcp_bridge.config import CURRENT_SCHEMA_VERSION
 
-            bridge_ini.write_text(
-                f"[bridge]\nschema_version = {CURRENT_SCHEMA_VERSION}\nworkspace = {workspace}\n"
-                f"models_dir = {models_dir}\nmodels_ini = {models_ini_path}\nresidency = {residency}\n",
-                encoding="utf-8",
-            )
+            resolved_bin = found_bin or _find_llama_server(workspace, "")
+            ini_lines = [
+                "[bridge]",
+                f"schema_version = {CURRENT_SCHEMA_VERSION}",
+                f"workspace = {workspace}",
+                f"models_dir = {models_dir}",
+                f"models_ini = {models_ini_path}",
+                f"residency = {residency}",
+            ]
+            if resolved_bin:
+                ini_lines.append(f"llama_server_bin = {resolved_bin}")
+            ini_lines.extend([
+                "# host = 127.0.0.1",
+                "# port = 8080",
+                "# auto_spawn = true",
+                "# models_max = 0",
+                "# sleep_idle_seconds = -1",
+                "# fallback_on_oom = false",
+                "# health_timeout_s = 60",
+                "# request_timeout_s = 180",
+            ])
+            bridge_ini.write_text("\n".join(ini_lines) + "\n", encoding="utf-8")
 
         if not found_bin and mode != "skip":
             _auto_install_llama_server(profile, mode, workspace, dry_run=False, yes=True)
