@@ -51,7 +51,8 @@ jobs:
           run: |
             export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
             uv venv --python python3.12 --system-site-packages
+            uv pip install hatchling
             uv pip install --no-build-isolation -e .
-            uv run pytest -v
-            uv run llama-mcp-install --dry-run
-            uv run llama-mcp-install --install-service --dry-run
+            uv run --no-sync pytest -v
+            uv run --no-sync llama-mcp-install --dry-run
+            uv run --no-sync llama-mcp-install --install-service --dry-run
