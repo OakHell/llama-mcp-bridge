@@ -58,7 +58,7 @@ def _resolve_bridge_command() -> str:
     return "llama-mcp-bridge"
 
 
-def _build_mcp_snippet(workspace: Path) -> str:
+def _build_mcp_snippet(workspace: Path, workspace_name: str | None = None) -> str:
     """Build mcp_config.json snippet, omitting LLAMA_MCP_HOME when globally registered or default."""
     resolve_cmd = _inst_attr("_resolve_bridge_command", _resolve_bridge_command)
     server_cfg: dict[str, Any] = {"command": resolve_cmd()}
@@ -66,7 +66,7 @@ def _build_mcp_snippet(workspace: Path) -> str:
     registered = read_registered_workspace(sys.platform)
     is_default = resolved_ws == get_default_workspace(sys.platform).expanduser().resolve()
     is_registered = registered is not None and resolved_ws == registered.expanduser().resolve()
-    if not is_default and not is_registered:
+    if workspace_name or (not is_default and not is_registered):
         server_cfg["env"] = {"LLAMA_MCP_HOME": str(workspace)}
     return json.dumps({"mcpServers": {"local-ai": server_cfg}}, indent=2)
 
@@ -107,7 +107,12 @@ def _resolve_harness_config_paths(harness: str, home_dir: Path | None = None) ->
     return []
 
 
-def _configure_client(harness: str, apply: bool = False, dry_run: bool = False) -> None:
+def _configure_client(
+    harness: str,
+    apply: bool = False,
+    dry_run: bool = False,
+    workspace_name: str | None = None,
+) -> None:
     """Print (or optionally merge-write via --apply) MCP client JSON snippet and official guide URL."""
     console = Console()
     if harness == "prompt":
@@ -120,7 +125,9 @@ def _configure_client(harness: str, apply: bool = False, dry_run: bool = False) 
     target_path, doc_url = _HARNESS_GUIDES.get(harness, _HARNESS_GUIDES["other"])
     if harness == "zed" and sys.platform == "win32":
         target_path = r"%APPDATA%\Zed\settings.json"
-    snippet = _inst_attr("_build_mcp_snippet", _build_mcp_snippet)(Path(cfg.workspace))
+    snippet = _inst_attr("_build_mcp_snippet", _build_mcp_snippet)(
+        Path(cfg.workspace), workspace_name=workspace_name
+    )
     console.print(
         Panel(
             f"[bold]Target config (reference):[/bold] {target_path}\n"

@@ -119,6 +119,9 @@ class LlamaSupervisor:
             if sys.platform == "win32" and not binary_bin.lower().endswith(".exe"):
                 binary_bin = f"{binary_bin}.exe"
             cmd = [binary_bin]
+            api_key = getattr(self.config, "api_key", "")
+            if api_key:
+                cmd.extend(["--api-key", str(api_key)])
             cmd.extend(getattr(self.config, "extra_args", []))
 
             from llama_mcp_bridge.config import get_config_home
@@ -195,6 +198,10 @@ class LlamaSupervisor:
                 pass
         return ""
 
+    def _auth_headers(self) -> dict[str, str]:
+        api_key = getattr(self.config, "api_key", "")
+        return {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
     def _check_health(self) -> bool:
         """
         Check the health endpoint of the server.
@@ -208,11 +215,14 @@ class LlamaSupervisor:
                 "timeout_seconds",
                 getattr(self.config, "request_timeout_s", DEFAULT_TIMEOUT_SECONDS),
             )
-            response = requests.get(
-                self._get_health_url(),
-                timeout=min(float(raw_timeout), 2.0),
-                allow_redirects=True,
-            )
+            headers = self._auth_headers()
+            kwargs: dict[str, Any] = {
+                "timeout": min(float(raw_timeout), 2.0),
+                "allow_redirects": True,
+            }
+            if headers:
+                kwargs["headers"] = headers
+            response = requests.get(self._get_health_url(), **kwargs)
             return response.status_code == 200
         except (ConnectionError, Timeout, requests.exceptions.RequestException):
             return False
@@ -300,7 +310,11 @@ class LlamaSupervisor:
         models: dict[str, str] = {}
         if healthy:
             try:
-                resp = requests.get(f"{self._get_server_url()}/models", timeout=2)
+                headers = self._auth_headers()
+                get_kwargs: dict[str, Any] = {"timeout": 2}
+                if headers:
+                    get_kwargs["headers"] = headers
+                resp = requests.get(f"{self._get_server_url()}/models", **get_kwargs)
                 if resp.status_code == 200:
                     data = resp.json().get("data", [])
                     for item in data:

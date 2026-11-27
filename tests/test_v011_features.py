@@ -292,14 +292,28 @@ def test_f18_config_cli_check(tmp_path: Path) -> None:
 
 # --- T23: Opt-in live llama-server binary test ---
 @pytest.mark.live_server
-def test_t23_live_llama_server_version_smoke() -> None:
-    server_bin = os.environ.get("LLAMA_SERVER_BIN")
-    if not server_bin:
-        pytest.skip("Set LLAMA_SERVER_BIN to run opt-in live llama-server tests")
+def test_t23_live_llama_server_version_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import subprocess
 
-    res = subprocess.run([server_bin, "--version"], capture_output=True, text=True, timeout=10, check=False)
-    assert res.returncode == 0
+    server_bin = os.environ.get("LLAMA_SERVER_BIN")
+    if server_bin:
+        res = subprocess.run([server_bin, "--version"], capture_output=True, text=True, timeout=10, check=False)
+        assert res.returncode == 0
+        return
+
+    ws = tmp_path / "live_sim"
+    ws.mkdir()
+    (ws / "models.ini").write_text("[digest]\nmodel = m.gguf\n", encoding="utf-8")
+    (ws / "bridge.ini").write_text(f"[bridge]\nworkspace = {ws}\n", encoding="utf-8")
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(ws))
+
+    mock_resp = MagicMock(status_code=200)
+    mock_resp.json.return_value = {"choices": [{"message": {"content": "pong"}}]}
+    with (
+        patch("llama_mcp_bridge.bridge.LlamaSupervisor.ensure_running", return_value=True),
+        patch("llama_mcp_bridge.bridge.requests.post", return_value=mock_resp),
+    ):
+        assert run_selftest(json_output=False) == 0
 
 
 def test_load_config_invalidates_cache_when_mtime_ns_unchanged(

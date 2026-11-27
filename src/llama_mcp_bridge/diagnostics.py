@@ -179,6 +179,9 @@ def run_profile_benchmark(cfg: BridgeConfig, json_output: bool = False) -> int:
         return 1
 
     url = f"http://{cfg.host}:{cfg.port}/v1/chat/completions"
+    req_headers: dict[str, str] = {}
+    if cfg.api_key:
+        req_headers["Authorization"] = f"Bearer {cfg.api_key}"
     results: list[dict[str, Any]] = []
     for preset in presets:
         payload = {
@@ -189,7 +192,12 @@ def run_profile_benchmark(cfg: BridgeConfig, json_output: bool = False) -> int:
         }
         t0 = time.perf_counter()
         try:
-            resp = requests.post(url, json=payload, timeout=cfg.request_timeout_s)
+            resp = requests.post(
+                url,
+                json=payload,
+                headers=req_headers or None,
+                timeout=cfg.request_timeout_s,
+            )
             elapsed = max(1e-6, time.perf_counter() - t0)
             if resp.status_code != 200:
                 results.append(

@@ -6,9 +6,13 @@ from pathlib import Path
 
 __all__ = [
     "get_default_workspace",
+    "get_named_workspaces_dir",
     "get_pointer_file",
+    "list_named_workspaces",
+    "read_named_workspace",
     "read_registered_workspace",
     "register_global_workspace",
+    "register_named_workspace",
     "resolve_workspace",
     "unregister_global_workspace",
 ]
@@ -74,16 +78,62 @@ def unregister_global_workspace(
     return True
 
 
+def get_named_workspaces_dir(platform_name: str | None = None) -> Path:
+    """Return directory storing named workspace pointer files (<name>.path)."""
+    return get_default_workspace(platform_name) / "workspaces"
+
+
+def register_named_workspace(
+    name: str, workspace: Path | str, platform_name: str | None = None
+) -> Path:
+    """Persist a named workspace pointer under workspaces/<name>.path."""
+    clean = name.strip()
+    if not clean or "/" in clean or "\\" in clean or ".." in clean:
+        raise ValueError(f"Invalid workspace name: {name!r}")
+    ws = Path(os.path.expandvars(str(workspace))).expanduser().resolve()
+    ptr = get_named_workspaces_dir(platform_name) / f"{clean}.path"
+    ptr.parent.mkdir(parents=True, exist_ok=True)
+    ptr.write_text(f"{ws}\n", encoding="utf-8")
+    return ptr
+
+
+def read_named_workspace(name: str, platform_name: str | None = None) -> Path | None:
+    """Read a named workspace pointer if it exists and is non-empty."""
+    clean = name.strip()
+    if not clean:
+        return None
+    ptr = get_named_workspaces_dir(platform_name) / f"{clean}.path"
+    if not ptr.is_file():
+        return None
+    raw = ptr.read_text(encoding="utf-8").strip()
+    return Path(os.path.expandvars(raw)).expanduser() if raw else None
+
+
+def list_named_workspaces(platform_name: str | None = None) -> dict[str, Path]:
+    """Return a mapping of registered workspace names to their target Paths."""
+    ws_dir = get_named_workspaces_dir(platform_name)
+    if not ws_dir.is_dir():
+        return {}
+    result: dict[str, Path] = {}
+    for ptr in sorted(ws_dir.glob("*.path")):
+        raw = ptr.read_text(encoding="utf-8").strip()
+        if raw:
+            result[ptr.stem] = Path(os.path.expandvars(raw)).expanduser()
+    return result
+
+
 def resolve_workspace(
     explicit_dir: Path | str | None = None,
     platform_name: str | None = None,
+    workspace_name: str | None = None,
 ) -> Path:
     """Resolve the active workspace using strict precedence.
 
     1. Explicit CLI flag (``--dir`` / ``--home``)
     2. ``LLAMA_MCP_HOME`` environment variable (when non-empty)
-    3. Registered global pointer file
-    4. Default OS workspace directory
+    3. Named workspace (``--workspace-name`` / ``LLAMA_MCP_WORKSPACE``)
+    4. Registered global pointer file
+    5. Default OS workspace directory
     """
     if explicit_dir is not None and str(explicit_dir).strip():
         return Path(os.path.expandvars(str(explicit_dir).strip())).expanduser()
@@ -91,6 +141,12 @@ def resolve_workspace(
     env_home = os.environ.get("LLAMA_MCP_HOME", "").strip()
     if env_home:
         return Path(os.path.expandvars(env_home)).expanduser()
+
+    ws_name = (workspace_name or os.environ.get("LLAMA_MCP_WORKSPACE", "")).strip()
+    if ws_name:
+        named = read_named_workspace(ws_name, platform_name=platform_name)
+        if named is not None:
+            return named
 
     registered = read_registered_workspace(platform_name)
     if registered is not None:

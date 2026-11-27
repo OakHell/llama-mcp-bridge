@@ -30,13 +30,16 @@ Non-login shells often omit `~/.local/bin` (POSIX) or `%USERPROFILE%\.local\bin`
   ```bash
   llama-mcp-install --yes --download-models --install-service
   ```
-- **Custom directory / secondary drive** (registers globally so `LLAMA_MCP_HOME` is not needed):
+- **Custom directory / secondary drive** (registers globally or under a named profile with `--register-name` so `LLAMA_MCP_HOME` is not needed):
   ```bash
   # POSIX example:
   llama-mcp-install --dir /mnt/ai --register --yes --download-models --install-service
+  # Named profile + warmup preloading:
+  llama-mcp-install --dir /mnt/work-ai --register-name work --warmup digest,coder --yes
   # Windows example:
   llama-mcp-install --dir D:\ai --register --yes --download-models --install-service
   ```
+- **Optional `api_key` auth:** Set `api_key = <secret>` in `bridge.ini` (or `LLAMA_MCP_API_KEY`) to pass `--api-key` to `llama-server` and attach `Authorization: Bearer` headers.
 - **Single-preset lightweight install** (e.g. CPU-only or minimal footprint):
   ```bash
   llama-mcp-install --presets digest --download-models digest --yes --install-service

@@ -57,28 +57,28 @@
 - [x] **N12:** Remove dead `_MODEL_LOCK` and unused `import threading` in `bridge.py`.
 
 ## Features
-- [ ] **F1 — Optional streaming support:** Add opt-in streaming in `query_llama` and MCP tool handlers (`"stream": True`).
-- [ ] **F2 — Hot-reload `models.ini` via `notifications/tools/list_changed`:** Emit MCP tool-list change notifications when `models.ini` updates without requiring a client restart.
+- [x] **F1 — Optional streaming support:** Add opt-in streaming in `query_llama` and MCP tool handlers (`"stream": True`).
+- [x] **F2 — Hot-reload `models.ini` via `notifications/tools/list_changed`:** Emit MCP tool-list change notifications when `models.ini` updates without requiring a client restart.
 - [x] **F3 — `--verify-all` CLI flag:** Combine `--verify-models` and `--doctor` into a single deployment check.
 - [x] **F4 — 1-hour TTL cache for Hugging Face URL verification:** Cache `verify_tier_models` results locally for 1 hour to reduce repeated HF API calls.
 - [x] **F5 — `--import-ollama` manifest parser & blob symlinker (`ollama_import.py`):** Walk `~/.ollama/models/manifests/**`, parse JSON layers (`application/vnd.ollama.image.model` and `.projector`), **symlink** (never copy) matching `blobs/sha256-<hash>` files into `<workspace>/models/<model>-<tag>.gguf`, run `parse_gguf_header` on each symlinked blob to auto-tune `models.ini`, reject split multi-blob models clearly, and catch `Invalid GGUF magic` on safetensors-backed Ollama models with a warning.
-- [ ] **F6 — `ask_batch` parallel prompt tool:** Batch N prompts against the same preset when `parallel > 1`.
-- [ ] **F7 — MCP `notifications/progress` for long inference:** Emit progress notifications during calls exceeding 30 seconds.
+- [x] **F6 — `ask_batch` parallel prompt tool:** Batch N prompts against the same preset when `parallel > 1`.
+- [x] **F7 — MCP `notifications/progress` for long inference:** Emit progress notifications during calls exceeding 30 seconds.
 - [x] **F8 — `--export-config` and `--diff-config`:** Print effective merged `[*]` + `[preset]` config and diff current `models.ini` against freshly generated tier defaults.
 - [x] **F9 — `--doctor --verify-sha`:** Re-verify downloaded GGUF files on disk against Hugging Face `X-Linked-ETag` SHA-256 headers.
 - [x] **F10 — `llama-mcp-models --prune`:** Remove unreferenced `.gguf` and `mmproj` files in `models_dir` not claimed by any `[preset]` in `models.ini`.
 - [x] **F11 — `--profile` benchmarking mode:** Run a standard prompt suite across configured presets and report tokens/sec, latency, and VRAM usage.
-- [ ] **F12 — Optional `--api-key` auth for `llama-server`:** Wire `llama-server --api-key` through `bridge.ini` and `Authorization: Bearer` headers.
-- [ ] **F13 — Prometheus `/metrics` sidecar endpoint:** Expose request counts, latency histograms, model load events, and OOM counts.
-- [ ] **F14 — Per-preset access control (`allowed_presets`):** Allow restricting callable presets per `bridge.ini` profile.
-- [ ] **F15 — Named multi-workspace support (`--register-name`):** Support multiple named workspace pointers alongside the default global workspace.
+- [x] **F12 — Optional `--api-key` auth for `llama-server`:** Wire `llama-server --api-key` through `bridge.ini` and `Authorization: Bearer` headers.
+- [x] **F13 — Prometheus `/metrics` sidecar endpoint:** Expose request counts, latency histograms, model load events, and OOM counts.
+- [x] **F14 — Per-preset access control (`allowed_presets`):** Allow restricting callable presets per `bridge.ini` profile.
+- [x] **F15 — Named multi-workspace support (`--register-name`):** Support multiple named workspace pointers alongside the default global workspace.
 - [x] **F16 — `--selftest` end-to-end inference probe:** Run a live `ask_digest("ping")` smoke test against `llama-server` and verify a non-empty reply.
-- [ ] **F17 — `--warmup` preset preloading:** Optionally preload configured presets on bridge/service startup.
+- [x] **F17 — `--warmup` preset preloading:** Optionally preload configured presets on bridge/service startup.
 - [x] **F18 — `llama-mcp-config check <path>` CLI:** Validate `bridge.ini` and `models.ini` syntax/paths standalone.
 - [x] **F19 — `--model-info <preset>` CLI flag:** Display effective merged `llama-server` flags (`[*]` + `[preset]`) for a single preset.
-- [ ] **F20 — GPG / sigstore signature verification for downloaded `llama-server` binaries.**
+- [x] **F20 — GPG / sigstore signature verification for downloaded `llama-server` binaries.**
 - [x] **F21 — `--check-update` via Git tags:** Query `git ls-remote --tags https://github.com/OakHell/llama-mcp-bridge`, parse SemVer tags, and compare against installed `pyproject.toml` version.
-- [ ] **F22 — Optional per-call `timeout_s` override** on MCP tool invocations.
+- [x] **F22 — Optional per-call `timeout_s` override** on MCP tool invocations.
 
 ## Chores
 - [x] **C1:** Consolidate `_encode_image_data_uri` and `_encode_image_to_data_uri` (`bridge.py`).
