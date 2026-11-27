@@ -80,7 +80,7 @@ Always run black-box CLI diagnostics before inspecting source code or logs:
 5. **Common Failures:**
    - *Missing GGUF files*: Run `llama-mcp-models add <preset>` or `llama-mcp-install --download-models`.
    - *`Preset '<name>' is not configured in models.ini`*: Run `llama-mcp-models add <name>`.
-   - *VRAM OOM or cold-swap timeout*: Set `residency = stingy` or `fallback_on_oom = true` in `bridge.ini`, or re-run `llama-mcp-models add` with `--tune-mode conservative`.
+   - *VRAM OOM or cold-swap timeout*: Set `residency = stingy` (or explicit `models_max` / `sleep_idle_seconds` overrides) or `fallback_on_oom = true` in `bridge.ini`, or re-run `llama-mcp-models add` with `--tune-mode conservative`.
 
 ## Enterprise Extra (`--enterprise`)
 - Opt-in `[enterprise]` mode (`E3` audit log, `E7` `/livez` + `/readyz` + `sd_notify` watchdog, `E11` multi-tenant isolation). Verified in automated tests only; unvalidated in production.

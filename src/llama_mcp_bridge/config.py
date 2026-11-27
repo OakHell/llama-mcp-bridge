@@ -43,6 +43,8 @@ class BridgeConfig:
     verify_signatures: bool = True
     auto_spawn: bool = True
     residency: str = "moderate"
+    models_max: int = 0
+    sleep_idle_seconds: int = -1
     fallback_on_oom: bool = False
     enterprise_mode: bool = False
     audit_enabled: bool = False

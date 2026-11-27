@@ -49,6 +49,11 @@ class LlamaServerConfig:
     host: str = "127.0.0.1"
     port: int = 8080
     binary: str = DEFAULT_SERVER_BINARY
+    models_ini: str = ""
+    models_dir: str = ""
+    residency: str = "moderate"
+    models_max: int = 0
+    sleep_idle_seconds: int = -1
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
     poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS
     max_retries: int = DEFAULT_MAX_RETRIES
@@ -119,6 +124,34 @@ class LlamaSupervisor:
             if sys.platform == "win32" and not binary_bin.lower().endswith(".exe"):
                 binary_bin = f"{binary_bin}.exe"
             cmd = [binary_bin]
+            host = getattr(self.config, "host", "") or "127.0.0.1"
+            port = getattr(self.config, "port", 8080) or 8080
+            cmd.extend(["--host", str(host), "--port", str(port)])
+            models_ini = getattr(self.config, "models_ini", "")
+            if models_ini and Path(models_ini).is_file():
+                cmd.extend(["--models-preset", str(models_ini)])
+            models_dir = getattr(self.config, "models_dir", "")
+            if models_dir and Path(models_dir).is_dir():
+                cmd.extend(["--models-dir", str(models_dir)])
+            residency = str(getattr(self.config, "residency", "")).lower()
+            cfg_models_max = int(getattr(self.config, "models_max", 0) or 0)
+            cfg_idle_s = int(getattr(self.config, "sleep_idle_seconds", -1))
+            if residency in ("stingy", "moderate", "snappy"):
+                from llama_mcp_bridge.hardware import detect_hardware
+                from llama_mcp_bridge.presets import resolve_residency_settings
+
+                tier = getattr(self.config, "tier", "") or detect_hardware().tier
+                idle_s, models_max = resolve_residency_settings(tier, residency)
+                if cfg_models_max > 0:
+                    models_max = cfg_models_max
+                if cfg_idle_s >= 0:
+                    idle_s = cfg_idle_s
+                cmd.extend(["--models-max", str(models_max), "--sleep-idle-seconds", str(idle_s)])
+            else:
+                if cfg_models_max > 0:
+                    cmd.extend(["--models-max", str(cfg_models_max)])
+                if cfg_idle_s >= 0:
+                    cmd.extend(["--sleep-idle-seconds", str(cfg_idle_s)])
             api_key = getattr(self.config, "api_key", "")
             if api_key:
                 cmd.extend(["--api-key", str(api_key)])
@@ -472,6 +505,9 @@ def create_supervisor(
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     max_retries: int = DEFAULT_MAX_RETRIES,
+    models_ini: str = "",
+    models_dir: str = "",
+    residency: str = "moderate",
 ) -> LlamaSupervisor:
     """
     Factory function to create a configured LlamaSupervisor instance.
@@ -484,6 +520,9 @@ def create_supervisor(
         timeout_seconds: Health check timeout in seconds.
         poll_interval_seconds: Interval between health check polls.
         max_retries: Maximum number of health check retries.
+        models_ini: Path to models.ini preset file.
+        models_dir: Path to models directory.
+        residency: VRAM residency profile (stingy, moderate, snappy).
 
     Returns:
         Configured LlamaSupervisor instance.
@@ -492,6 +531,9 @@ def create_supervisor(
         host=host,
         port=port,
         binary=binary,
+        models_ini=models_ini,
+        models_dir=models_dir,
+        residency=residency,
         auto_spawn=auto_spawn,
         timeout_seconds=timeout_seconds,
         poll_interval_seconds=poll_interval_seconds,

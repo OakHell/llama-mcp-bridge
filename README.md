@@ -133,7 +133,7 @@ Manage, add, or remove specialist presets anytime after installation without re-
 
 `llama-mcp-bridge` separates two explicit contracts:
 - **`models.ini`** is `llama-server`'s native router-mode preset file—the full `llama-server` flag surface is delegated verbatim.
-- **`bridge.ini`** is the bridge's orchestration contract (`host`, `port`, `auto_spawn`, `residency`, `fallback_on_oom`, `health_timeout_s`, `request_timeout_s`, `models_dir`, `models_ini`, `llama_server_bin`).
+- **`bridge.ini`** is the bridge's orchestration contract (`host`, `port`, `auto_spawn`, `residency`, `models_max`, `sleep_idle_seconds`, `fallback_on_oom`, `health_timeout_s`, `request_timeout_s`, `models_dir`, `models_ini`, `llama_server_bin`).
 
 `LLAMA_MCP_HOME` is a first-class environment variable for targeting any workspace. Resolution precedence:
 
@@ -142,7 +142,7 @@ Manage, add, or remove specialist presets anytime after installation without re-
 3. Registered global workspace pointer (`~/.config/llama-mcp-bridge/home` on POSIX, `%APPDATA%\llama-mcp-bridge\home` on Windows) set via `llama-mcp-install --register` (clear with `--unregister`).
 4. **POSIX (Linux, macOS, FreeBSD):** `~/.llama-mcp-bridge` / **Windows:** `%LOCALAPPDATA%\llama-mcp-bridge`
 
-- **Residency Profiles (`residency`):** `stingy` (`15s` idle, `1` model), `moderate` (`120s` idle, `1`–`2` models; default), `snappy` (`600s` idle, `2`–`3` models on `12gb+`).
+- **Residency Profiles (`residency`):** `stingy` (`15s` idle, `1` model), `moderate` (`120s` idle, `1`–`2` models; default), `snappy` (`600s` idle, `2`–`3` models on `12gb+`). Set `models_max` (`> 0`) or `sleep_idle_seconds` (`>= 0`) in `bridge.ini` to override these defaults explicitly.
 - **OOM & Timeout Recovery (`fallback_on_oom`):** Classifies VRAM OOM vs. cold-swap timeouts from `llama-server` `stderr`; set `fallback_on_oom = true` in `bridge.ini` to run a structured degradation loop (retrying text requests on `digest` and prepending a fallback notice; image requests note that images were dropped).
 - **Config-as-Contract & Tinkerability:** Hand-edited `[preset]` sections in `models.ini` are preserved across re-installs and `--install-service`; `llama-mcp-models remove` uses reference-counted GGUF deletion; `--uninstall` preserves `.ini` and `.gguf` files; `--dry-run` and `--doctor` validate without mutating.
 
