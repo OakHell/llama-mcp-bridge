@@ -50,6 +50,7 @@ jobs:
           run: |
             export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
             uv venv --python python3.12 --system-site-packages
+            uv pip install hatchling editables
             uv pip install --no-build-isolation -e .
             .venv/bin/python -m pytest -v
             .venv/bin/llama-mcp-install --dry-run
