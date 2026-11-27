@@ -22,6 +22,7 @@ from rich.table import Table
 from llama_mcp_bridge.client_config import _cleanup_harness_mcp_configs
 from llama_mcp_bridge.config import get_config_home, load_config
 from llama_mcp_bridge.hardware import SystemProfile
+from llama_mcp_bridge.http_resilience import ensure_disk_space
 from llama_mcp_bridge.paths import unregister_global_workspace
 from llama_mcp_bridge.signing import verify_release_signature
 from llama_mcp_bridge.supervisor import LlamaSupervisor
@@ -389,6 +390,7 @@ def _auto_install_llama_server(
         if is_hermetic:
             cmake_flags.append("-DLLAMA_CURL=OFF")
 
+        ensure_disk_space(workspace, 512 * 1024 * 1024, "llama-server source build")
         with tempfile.TemporaryDirectory() as tmpdir:
             src_dir = Path(tmpdir) / "llama.cpp"
             build_dir = src_dir / "build"

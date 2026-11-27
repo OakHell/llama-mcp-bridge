@@ -14,11 +14,15 @@ from pathlib import Path
 from llama_mcp_bridge.paths import resolve_workspace
 
 __all__ = [
+    "CURRENT_SCHEMA_VERSION",
     "BridgeConfig",
     "get_config_home",
     "load_config",
+    "migrate_bridge_ini",
     "resolve_path",
 ]
+
+CURRENT_SCHEMA_VERSION = 1
 
 
 @dataclass
@@ -26,6 +30,8 @@ class BridgeConfig:
     """Configuration settings for the Llama MCP Bridge."""
 
     workspace: str = ""
+    schema_version: int = CURRENT_SCHEMA_VERSION
+    log_format: str = "text"
     host: str = "127.0.0.1"
     port: int = 8080
     models_dir: str = ""
@@ -188,3 +194,34 @@ def load_config(explicit_dir: Path | str | None = None) -> BridgeConfig:
 
     _CONFIG_CACHE[cache_key] = config
     return replace(config)
+
+
+def migrate_bridge_ini(bridge_ini: Path, dry_run: bool = False) -> tuple[bool, str]:
+    """Migrate bridge.ini to CURRENT_SCHEMA_VERSION with an atomic .bak backup."""
+    if not bridge_ini.is_file():
+        return False, f"bridge.ini not found at {bridge_ini}"
+
+    cp = configparser.ConfigParser(interpolation=None)
+    cp.optionxform = lambda optionstr: optionstr  # type: ignore[method-assign]
+    cp.read(bridge_ini, encoding="utf-8")
+    if "bridge" not in cp:
+        cp["bridge"] = {}
+
+    raw_ver = cp.get("bridge", "schema_version", fallback="0").strip()
+    try:
+        current_ver = int(raw_ver)
+    except ValueError:
+        current_ver = 0
+
+    if current_ver >= CURRENT_SCHEMA_VERSION:
+        return False, f"{bridge_ini} is already at schema_version={current_ver}."
+
+    if dry_run:
+        return True, f"[DRY-RUN] Would back up {bridge_ini} to {bridge_ini}.bak and set schema_version = {CURRENT_SCHEMA_VERSION}."
+
+    backup_path = bridge_ini.with_suffix(".ini.bak")
+    backup_path.write_bytes(bridge_ini.read_bytes())
+    cp["bridge"]["schema_version"] = str(CURRENT_SCHEMA_VERSION)
+    with bridge_ini.open("w", encoding="utf-8") as fh:
+        cp.write(fh)
+    return True, f"Migrated {bridge_ini} (v{current_ver} -> v{CURRENT_SCHEMA_VERSION}); backup saved to {backup_path}."

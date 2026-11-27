@@ -194,7 +194,11 @@ All presets use `reasoning-format = deepseek` with a shared `reasoning-budget-me
 - **Per-Call Overrides:** Specialist tools accept `stream=True` and `timeout_s=<seconds>`.
 - **Access Control (`allowed_presets`):** Comma-separated preset names in `bridge.ini` restrict which presets are exposed and callable.
 - **API Key Auth (`api_key` / `LLAMA_MCP_API_KEY`):** Passes `--api-key` to `llama-server` and attaches `Authorization: Bearer` headers to all HTTP probes and inference calls.
-- **Prometheus Metrics (`metrics_port` / `--metrics-port`):** Exposes `/metrics` and `/healthz` via `metrics.py` (`llama_mcp_requests_total`, `llama_mcp_request_duration_seconds`, `llama_mcp_model_loads_total`, `llama_mcp_oom_events_total`).
+- **Prometheus Metrics (`metrics_port` / `--metrics` / `--metrics-port`):** Exposes `/metrics` and `/healthz` via `metrics.py` (`--metrics` defaults to port `9090`).
+- **Structured JSON Logging (`--log-format json` / `log_format`):** Emits single-line JSON log records across all CLI entrypoints.
+- **Config Schema & Migration (`schema_version` / `--migrate-config`):** `bridge.ini` tracks `schema_version = 1`; `--doctor` warns on unversioned configs and `llama-mcp-install --migrate-config` upgrades with a `.bak` backup.
+- **Network Resilience & Resource Guards (`http_resilience.py`):** GitHub/Hugging Face HTTP requests use jittered exponential backoff and a circuit breaker (`failure_threshold=5`), with pre-flight disk-space checks and actionable `ENOSPC`/`EMFILE`/thread-limit diagnostics.
+- **Stability & Signed Releases:** See [STABILITY.md](STABILITY.md) for SemVer/CLI stability guarantees; tagged releases include Sigstore signatures and CycloneDX 1.5 SBOMs (`.github/workflows/release.yml`).
 - **Named Multi-Workspaces:** Register named profiles with `llama-mcp-install --dir /path --register-name work` and target them with `--workspace-name work` or `LLAMA_MCP_WORKSPACE=work`.
 - **Warmup Preloading (`--warmup` / `warmup_presets`):** Asynchronously preloads configured presets on `llama-mcp-bridge` startup.
 - **Release Signature Verification (`signing.py`):** Verifies downloaded `llama.cpp` release archives against `.bundle`/`.sig`/`.asc` assets via `cosign` or `gpg` when available (`--no-verify-signature` to skip).

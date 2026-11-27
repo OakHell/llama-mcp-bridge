@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .hardware import SystemProfile
+from .http_resilience import DEFAULT_HTTP_CLIENT
 
 __all__ = [
     "RESIDENCY_PROFILES",
@@ -401,7 +402,7 @@ def probe_model_metadata(
         headers={"User-Agent": "llama-mcp-bridge/0.1.0"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with DEFAULT_HTTP_CLIENT.urlopen(req, timeout=timeout) as resp:
             status = getattr(resp, "status", 200)
             if status in (200, 302):
                 raw_size = resp.headers.get("X-Linked-Size") or resp.headers.get("Content-Length")
@@ -434,7 +435,7 @@ def search_hf_gguf_models(
         f"&filter=gguf&sort=downloads&direction=-1&limit={limit}"
     )
     try:
-        with urllib.request.urlopen(api_url, timeout=timeout) as resp:
+        with DEFAULT_HTTP_CLIENT.urlopen(api_url, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if isinstance(data, list):
                 return [{"id": item.get("id", ""), "downloads": item.get("downloads", 0)} for item in data]
@@ -646,7 +647,7 @@ def resolve_hf_gguf_repo(
         raise ValueError(f"Invalid Hugging Face repo '{repo_spec}'; expected '<owner>/<repo>[:<quant-or-filename>]'.")
 
     api_url = f"https://huggingface.co/api/models/{repo_id}"
-    with urllib.request.urlopen(api_url, timeout=timeout) as resp:
+    with DEFAULT_HTTP_CLIENT.urlopen(api_url, timeout=timeout) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
 
     siblings = [item.get("rfilename", "") for item in payload.get("siblings", []) if isinstance(item, dict)]

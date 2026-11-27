@@ -4,7 +4,6 @@ import argparse
 import configparser
 import importlib.metadata
 import json
-import logging
 import os
 import re
 import shutil
@@ -27,7 +26,12 @@ from llama_mcp_bridge.client_config import (
     _resolve_bridge_command,
     _resolve_harness_config_paths,
 )
-from llama_mcp_bridge.config import get_config_home, load_config
+from llama_mcp_bridge.config import (
+    CURRENT_SCHEMA_VERSION,
+    get_config_home,
+    load_config,
+    migrate_bridge_ini,
+)
 from llama_mcp_bridge.diagnostics import (
     check_for_update,
     diff_config_against_defaults,
@@ -37,6 +41,7 @@ from llama_mcp_bridge.diagnostics import (
     run_selftest,
 )
 from llama_mcp_bridge.hardware import detect_hardware
+from llama_mcp_bridge.logging_utils import configure_logging
 from llama_mcp_bridge.model_download import (
     _compute_sha256,
     _download_spec_list,
@@ -225,6 +230,21 @@ def _run_doctor(json_output: bool = False, verify_sha: bool = False) -> int:
     else:
         failed = True
         _record("Config files", "FAIL", "Missing or invalid bridge.ini / models.ini")
+
+    if bridge_ini.is_file():
+        bcp = configparser.ConfigParser(interpolation=None)
+        try:
+            bcp.read(bridge_ini, encoding="utf-8")
+            raw_sv = bcp.get("bridge", "schema_version", fallback="").strip()
+            sv = int(raw_sv) if raw_sv.isdigit() else 0
+            if sv < CURRENT_SCHEMA_VERSION:
+                _record(
+                    "Config schema",
+                    "WARN",
+                    f"bridge.ini schema_version={sv or 'unversioned'} (< {CURRENT_SCHEMA_VERSION}); run: llama-mcp-install --migrate-config",
+                )
+        except (configparser.Error, OSError):
+            pass
 
     srv_bin = _find_llama_server(workspace, cfg.llama_server_bin)
     if srv_bin:
@@ -523,6 +543,13 @@ def main() -> None:
         help="Logging verbosity level.",
     )
     parser.add_argument(
+        "--log-format",
+        choices=["text", "json"],
+        default="text",
+        help="Logging output format (text or json).",
+    )
+    parser.add_argument("--migrate-config", action="store_true", help="Migrate bridge.ini to the current schema_version with .bak backup.")
+    parser.add_argument(
         "--mode",
         choices=["prebuilt", "source-hermetic", "source-system", "system-bin"],
         default="prebuilt",
@@ -604,10 +631,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+    configure_logging(args.log_level, args.log_format)
     if args.workspace_dir or args.workspace_name:
         os.environ["LLAMA_MCP_HOME"] = str(
             resolve_workspace(args.workspace_dir, workspace_name=args.workspace_name)
@@ -627,6 +651,11 @@ def main() -> None:
         return
     if args.doctor:
         sys.exit(_run_doctor(json_output=args.json, verify_sha=args.verify_sha))
+    if args.migrate_config:
+        cfg = load_config()
+        _, msg = migrate_bridge_ini(Path(cfg.workspace) / "bridge.ini", dry_run=args.dry_run)
+        print(msg)
+        return
     if args.selftest:
         sys.exit(run_selftest(json_output=args.json))
     if args.profile:

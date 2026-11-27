@@ -39,6 +39,7 @@ from llama_mcp_bridge.discovery import (
 )
 from llama_mcp_bridge.hardware import SystemProfile, detect_hardware
 from llama_mcp_bridge.hygiene import clean_mcp_output
+from llama_mcp_bridge.logging_utils import configure_logging
 from llama_mcp_bridge.metrics import METRICS, start_metrics_server
 from llama_mcp_bridge.paths import resolve_workspace
 from llama_mcp_bridge.supervisor import LlamaSupervisor, classify_inference_error
@@ -1013,8 +1014,15 @@ def main() -> None:
         default="WARNING",
         help="Logging verbosity level.",
     )
+    parser.add_argument(
+        "--log-format",
+        choices=["text", "json"],
+        default=None,
+        help="Logging output format (text or json).",
+    )
     parser.add_argument("--dir", "--home", dest="workspace_dir", type=str, help="Explicit workspace directory.")
     parser.add_argument("--workspace-name", type=str, help="Target a registered named workspace.")
+    parser.add_argument("--metrics", action="store_true", help="Enable Prometheus /metrics sidecar HTTP server (default port 9090).")
     parser.add_argument("--metrics-port", type=int, default=0, help="Port for Prometheus /metrics sidecar HTTP server.")
     parser.add_argument(
         "--warmup",
@@ -1025,17 +1033,14 @@ def main() -> None:
         help="Comma-separated presets to preload asynchronously on startup.",
     )
     args, _ = parser.parse_known_args()
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
     if args.workspace_dir or args.workspace_name:
         os.environ["LLAMA_MCP_HOME"] = str(
             resolve_workspace(args.workspace_dir, workspace_name=args.workspace_name)
         )
-    _register_configured_tools()
     cfg = load_config()
-    metrics_port = args.metrics_port or cfg.metrics_port
+    configure_logging(args.log_level, args.log_format or cfg.log_format)
+    _register_configured_tools()
+    metrics_port = args.metrics_port or cfg.metrics_port or (9090 if args.metrics else 0)
     if metrics_port > 0:
         start_metrics_server(metrics_port, METRICS, host=cfg.host)
     warmup_list: list[str] | None = None

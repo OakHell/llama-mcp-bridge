@@ -163,18 +163,18 @@
 - [x] **D30:** Create `ARCHITECTURE.md` with module call graph and data-flow diagram.
 
 ## Deferred / Long-Term (Enterprise Positioning)
-- [ ] **E1:** Structured JSON logging mode (`--log-format json`).
-- [ ] **E2:** Prometheus `/metrics` sidecar endpoint (`--metrics`).
+- [x] **E1:** Structured JSON logging mode (`--log-format json`).
+- [x] **E2:** Prometheus `/metrics` sidecar endpoint (`--metrics`).
 - [ ] **E3:** Rotating JSONL audit log of tool invocations.
-- [ ] **E4:** Config schema versioning and `--migrate-config`.
-- [ ] **E5:** CycloneDX SBOM generation (`uv export`) per release tag.
-- [ ] **E6:** Sigstore / cosign release artifact signing.
+- [x] **E4:** Config schema versioning and `--migrate-config`.
+- [x] **E5:** CycloneDX SBOM generation (`uv export`) per release tag.
+- [x] **E6:** Sigstore / cosign release artifact signing.
 - [ ] **E7:** Readiness vs. liveness healthcheck probes (`systemd` `WatchdogSec` / Kubernetes).
-- [ ] **E8:** Formal SemVer CLI/tool stability policy.
-- [ ] **E9:** Exponential backoff and circuit breaker for transient GitHub/Hugging Face `5xx` errors.
-- [ ] **E10:** Explicit resource-exhaustion handling (`EMFILE`, disk-full `ENOSPC`, thread limits).
+- [x] **E8:** Formal SemVer CLI/tool stability policy.
+- [x] **E9:** Exponential backoff and circuit breaker for transient GitHub/Hugging Face `5xx` errors.
+- [x] **E10:** Explicit resource-exhaustion handling (`EMFILE`, disk-full `ENOSPC`, thread limits).
 - [ ] **E11:** Multi-user / multi-tenant shared workspace isolation.
-- [ ] **E12:** Fault-injection chaos suite (network partition, disk full, port conflict, mid-download kill).
+- [x] **E12:** Fault-injection chaos suite (network partition, disk full, port conflict, mid-download kill).
 
 ## Retracted / Not-a-Bug Ledger (Reference Only)
 - **B5 (Retracted):** `_MODEL_LOCK` in `bridge.py` is never acquired in `query_llama` (dead variable tracked as `N12`); `parallel = N` is not serialized by the bridge.
