@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -145,7 +146,8 @@ def test_fresh_bridge_ini_writes_llama_server_bin_schema_and_commented_defaults(
     from llama_mcp_bridge.config import CURRENT_SCHEMA_VERSION, load_config
     from llama_mcp_bridge.installer import _run_tui_wizard
 
-    bin_path = tmp_path / "bin" / "llama-server"
+    bin_name = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+    bin_path = tmp_path / "bin" / bin_name
     bin_path.parent.mkdir(parents=True, exist_ok=True)
     bin_path.write_text("#!/bin/sh\n", encoding="utf-8")
     (tmp_path / "models").mkdir(exist_ok=True)
