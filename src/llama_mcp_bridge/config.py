@@ -32,9 +32,14 @@ class BridgeConfig:
     models_ini: str = ""
     llama_server_bin: str = ""
     server_log: str = ""
+    api_key: str = ""
+    metrics_port: int = 0
+    verify_signatures: bool = True
     auto_spawn: bool = True
     residency: str = "moderate"
     fallback_on_oom: bool = False
+    allowed_presets: tuple[str, ...] = ()
+    warmup_presets: tuple[str, ...] = ()
     startup_timeout_seconds: float = 30.0
     health_timeout_s: int = 30
     request_timeout_s: int = 90
@@ -102,7 +107,7 @@ def _load_ini_config(config_path: Path) -> dict[str, str]:
     return config_dict
 
 
-_CONFIG_CACHE: dict[tuple[str, int | None, bytes | None, str], BridgeConfig] = {}
+_CONFIG_CACHE: dict[tuple[str, int | None, bytes | None, str, str], BridgeConfig] = {}
 
 
 def load_config(explicit_dir: Path | str | None = None) -> BridgeConfig:
@@ -120,7 +125,8 @@ def load_config(explicit_dir: Path | str | None = None) -> BridgeConfig:
         ini_mtime_ns = None
         ini_bytes = None
 
-    cache_key = (str(config_home), ini_mtime_ns, ini_bytes, sys.platform)
+    env_api_key = os.environ.get("LLAMA_MCP_API_KEY", "").strip()
+    cache_key = (str(config_home), ini_mtime_ns, ini_bytes, sys.platform, env_api_key)
     if cache_key in _CONFIG_CACHE:
         return replace(_CONFIG_CACHE[cache_key])
 
@@ -141,12 +147,18 @@ def load_config(explicit_dir: Path | str | None = None) -> BridgeConfig:
                     setattr(config, key, value.strip().lower() in ("true", "1", "yes", "on"))
                 elif key in ("include", "ignore", "gitignore_paths"):
                     setattr(config, key, [v.strip() for v in value.split(",") if v.strip()])
+                elif key in ("allowed_presets", "warmup_presets"):
+                    setattr(config, key, tuple(v.strip() for v in value.split(",") if v.strip()))
                 elif key == "default_ignores":
                     setattr(config, key, frozenset(v.strip() for v in value.split(",") if v.strip()))
                 else:
                     setattr(config, key, value)
             except (ValueError, TypeError):
                 pass
+
+    env_api_key = os.environ.get("LLAMA_MCP_API_KEY", "").strip()
+    if env_api_key:
+        config.api_key = env_api_key
 
     if config.residency:
         config.residency = config.residency.strip().lower()

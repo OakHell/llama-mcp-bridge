@@ -23,6 +23,7 @@ from llama_mcp_bridge.client_config import _cleanup_harness_mcp_configs
 from llama_mcp_bridge.config import get_config_home, load_config
 from llama_mcp_bridge.hardware import SystemProfile
 from llama_mcp_bridge.paths import unregister_global_workspace
+from llama_mcp_bridge.signing import verify_release_signature
 from llama_mcp_bridge.supervisor import LlamaSupervisor
 
 __all__ = [
@@ -263,7 +264,12 @@ def _flatten_extracted_dir(root_dir: Path, target_name: str) -> None:
 
 
 def _auto_install_llama_server(
-    profile: SystemProfile, mode: str, workspace: Path, dry_run: bool, yes: bool
+    profile: SystemProfile,
+    mode: str,
+    workspace: Path,
+    dry_run: bool,
+    yes: bool,
+    verify_signatures: bool = True,
 ) -> None:
     """Prompt and install llama-server into <workspace>/bin when undetected."""
     bin_dir = workspace / "bin"
@@ -327,6 +333,9 @@ def _auto_install_llama_server(
             archive_path = Path(tmpdir) / match["name"]
             with urllib.request.urlopen(match["browser_download_url"], timeout=60) as dl:
                 archive_path.write_bytes(dl.read())
+            verify_release_signature(
+                archive_path, matched_release_assets, verify_signatures=verify_signatures
+            )
             _inst_attr("_extract_archive", _extract_archive)(archive_path, bin_dir)
             _inst_attr("_flatten_extracted_dir", _flatten_extracted_dir)(bin_dir, exe_name)
 

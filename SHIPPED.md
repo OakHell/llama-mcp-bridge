@@ -55,3 +55,6 @@ Added zero-copy Ollama manifest parsing and GGUF/mmproj blob symlinking (`ollama
 
 ### `v0.11.0.post1` — Windows NTFS `load_config()` Cache-Key Fix (Shipped)
 Included `bridge.ini` raw file bytes alongside `st_mtime_ns` in `load_config()`'s cache key (`config.py`) so rapid sub-15.6 ms overwrites on Windows NTFS never return stale cached `BridgeConfig` instances, and added a regression test pinning identical `st_mtime_ns` across mutations.
+
+### `v0.12.0` — Streaming, Hot-Reload, Auth, Metrics & Multi-Workspace (Shipped)
+Added opt-in SSE streaming (`stream=True`, `F1`), `models.ini` hot-reload with `notifications/tools/list_changed` (`F2`), parallel `ask_batch` tool bounded by `parallel` slots (`F6`), `notifications/progress` heartbeats after 30s (`F7`), `allowed_presets` access control (`F14`), and per-call `timeout_s` overrides (`F22`). Shipped `--api-key` / `LLAMA_MCP_API_KEY` Bearer auth (`F12`), Prometheus `/metrics` & `/healthz` sidecar (`metrics.py`, `F13`), named multi-workspace pointers (`--register-name` / `--workspace-name`, `F15`), `--warmup` preset preloading (`F17`), and `cosign`/`gpg` release signature verification (`signing.py`, `F20`).

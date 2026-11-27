@@ -174,7 +174,8 @@ Spanning distinct model families decorrelates role failures across extraction, c
 | `ask_reasoner` | IBM Granite 4.2 | `2048` | Mathematical, algorithmic, and logical reasoning |
 | `ask_analyst` | Mistral / Ministral 3 | `2048` | Deep technical auditing and edge-case analysis |
 | `ask_generalist` | Google Gemma 4 | `1024` | General technical writing and synthesis |
-| `ask_preset` | Any configured preset | Per `models.ini` | Immediate invocation of any `[preset]` (including before client reload) |
+| `ask_preset` | Any configured preset | Per `models.ini` | Immediate invocation of any `[preset]` (supports `stream=True`, `timeout_s`) |
+| `ask_batch` | Any configured preset | Per `models.ini` | Parallel prompt batching bounded by the preset's `parallel` slot count |
 | `get_bridge_status` | — | — | Read-only JSON health, active VRAM tier, and warm model residency check |
 
 ### Reasoning Management
@@ -183,10 +184,20 @@ All presets use `reasoning-format = deepseek` with a shared `reasoning-budget-me
 
 ## Tradeoffs & Non-Goals
 
-- **Non-Streaming Responses:** MCP tool calls wait for complete responses rather than streaming partial tokens.
-- **Client Reload for `tools/list` Discovery:** Newly added custom `ask_<name>` tools appear in `tools/list` after reloading the MCP client, though `ask_preset` can invoke them immediately.
+- **Opt-In Streaming (`stream=True`) & Progress:** Specialist tools default to complete-response mode (`stream=False`), with `stream=True` SSE accumulation and `notifications/progress` heartbeats after `30s` available when requested.
+- **Hot-Reload (`notifications/tools/list_changed`):** Changes to `models.ini` are detected automatically on disk and emit `notifications/tools/list_changed` to supporting MCP clients; `ask_preset` can also call newly added presets immediately.
 - **Single `llama-server` Process:** All presets share one router-mode `llama-server` instance per workspace.
 - **Curated Starter Pack & Backends:** Curated starter models are Hugging Face GGUFs; AMD prebuilt selection scores ROCm/HIP and Vulkan assets; CPU-only `6gb` tier setups trade higher latency for broad compatibility.
+
+### Advanced Runtime & Multi-Workspace Options
+
+- **Per-Call Overrides:** Specialist tools accept `stream=True` and `timeout_s=<seconds>`.
+- **Access Control (`allowed_presets`):** Comma-separated preset names in `bridge.ini` restrict which presets are exposed and callable.
+- **API Key Auth (`api_key` / `LLAMA_MCP_API_KEY`):** Passes `--api-key` to `llama-server` and attaches `Authorization: Bearer` headers to all HTTP probes and inference calls.
+- **Prometheus Metrics (`metrics_port` / `--metrics-port`):** Exposes `/metrics` and `/healthz` via `metrics.py` (`llama_mcp_requests_total`, `llama_mcp_request_duration_seconds`, `llama_mcp_model_loads_total`, `llama_mcp_oom_events_total`).
+- **Named Multi-Workspaces:** Register named profiles with `llama-mcp-install --dir /path --register-name work` and target them with `--workspace-name work` or `LLAMA_MCP_WORKSPACE=work`.
+- **Warmup Preloading (`--warmup` / `warmup_presets`):** Asynchronously preloads configured presets on `llama-mcp-bridge` startup.
+- **Release Signature Verification (`signing.py`):** Verifies downloaded `llama.cpp` release archives against `.bundle`/`.sig`/`.asc` assets via `cosign` or `gpg` when available (`--no-verify-signature` to skip).
 
 ## Service Installation (`--install-service`)
 

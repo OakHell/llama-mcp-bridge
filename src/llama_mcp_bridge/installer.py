@@ -47,6 +47,7 @@ from llama_mcp_bridge.ollama_import import import_ollama_models
 from llama_mcp_bridge.paths import (
     get_default_workspace,
     register_global_workspace,
+    register_named_workspace,
     resolve_workspace,
     unregister_global_workspace,
 )
@@ -573,8 +574,19 @@ def main() -> None:
     parser.add_argument("--tui", action="store_true", help="Launch interactive rich TUI wizard.")
     parser.add_argument("--models-dir", type=str, help="Path to models directory.")
     parser.add_argument("--dir", "--home", dest="workspace_dir", type=str, help="Explicit workspace directory.")
+    parser.add_argument("--workspace-name", type=str, help="Target a registered named workspace.")
     parser.add_argument("--register", action="store_true", help="Register workspace globally as active home.")
+    parser.add_argument("--register-name", type=str, metavar="NAME", help="Register workspace under a named profile.")
     parser.add_argument("--unregister", action="store_true", help="Clear the global workspace registration pointer.")
+    parser.add_argument(
+        "--warmup",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PRESETS",
+        help="Comma-separated presets to preload on startup (stored as warmup_presets in bridge.ini).",
+    )
+    parser.add_argument("--no-verify-signature", action="store_true", help="Skip cosign/gpg signature check on prebuilt downloads.")
     parser.add_argument(
         "--install-skill",
         nargs="?",
@@ -596,8 +608,10 @@ def main() -> None:
         level=getattr(logging, args.log_level),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    if args.workspace_dir:
-        os.environ["LLAMA_MCP_HOME"] = str(resolve_workspace(args.workspace_dir))
+    if args.workspace_dir or args.workspace_name:
+        os.environ["LLAMA_MCP_HOME"] = str(
+            resolve_workspace(args.workspace_dir, workspace_name=args.workspace_name)
+        )
     if args.unregister:
         if args.dry_run:
             print("[DRY-RUN] Would clear global workspace pointer.")
@@ -677,7 +691,12 @@ def main() -> None:
             print("No Ollama GGUF models imported.")
         return
     if args.configure_client:
-        _configure_client(args.configure_client, apply=args.apply, dry_run=args.dry_run)
+        _configure_client(
+            args.configure_client,
+            apply=args.apply,
+            dry_run=args.dry_run,
+            workspace_name=args.workspace_name,
+        )
         return
     if args.install_skill is not None:
         _install_skill(args.install_skill, symlink=args.skill_link, dry_run=args.dry_run)
@@ -740,7 +759,14 @@ def main() -> None:
     _check_hardware_prerequisites(profile, args.mode)
 
     if not _find_llama_server(home, cfg.llama_server_bin):
-        _auto_install_llama_server(profile, args.mode, home, args.dry_run, args.yes)
+        _auto_install_llama_server(
+            profile,
+            args.mode,
+            home,
+            args.dry_run,
+            args.yes,
+            verify_signatures=not args.no_verify_signature,
+        )
 
     if args.install_service:
         _generate_service_file(args.dry_run)
@@ -763,6 +789,9 @@ def main() -> None:
     if args.register:
         ptr = register_global_workspace(home)
         print(f"Registered global workspace pointer at {ptr} -> {home}")
+    if args.register_name:
+        nptr = register_named_workspace(args.register_name, home)
+        print(f"Registered named workspace '{args.register_name}' at {nptr} -> {home}")
     models_ini_path = home / "models.ini"
     preserve_existing = (
         models_ini_path.exists()
@@ -779,9 +808,10 @@ def main() -> None:
         print(f"Wrote {models_ini_path}")
     bridge_ini = home / "bridge.ini"
     if not bridge_ini.exists():
+        warmup_line = f"warmup_presets = {args.warmup}\n" if args.warmup else ""
         bridge_ini.write_text(
             f"[bridge]\nworkspace = {home}\nmodels_dir = {models_dir}\n"
-            f"models_ini = {home / 'models.ini'}\nresidency = {args.residency}\n",
+            f"models_ini = {home / 'models.ini'}\nresidency = {args.residency}\n{warmup_line}",
             encoding="utf-8",
         )
     print("Manage, add, or remove models anytime with: llama-mcp-models")
