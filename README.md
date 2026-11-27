@@ -78,6 +78,7 @@ uv run pytest -v
 ```
 
 > **Zero-install dry run:** You can also run `uvx --from git+https://github.com/OakHell/llama-mcp-bridge llama-mcp-install --dry-run` without installing anything.
+> **BSD Note (`FreeBSD / OpenBSD / NetBSD`):** Because PyPI does not publish binary wheels for `*BSD`, install `rust` and `cmake` via system packages (e.g. `pkg install rust cmake`) before `uv tool install`, and use `--mode source-hermetic` or `--mode system-bin` (upstream `llama.cpp` does not publish prebuilt BSD release archives).
 
 ### Non-Interactive / Scripted CLI Flags
 
@@ -187,7 +188,7 @@ All presets use `reasoning-format = deepseek` with a shared `reasoning-budget-me
 
 ## Development
 
-Requires **Python `>=3.11`**. GitHub Actions CI runs on `ubuntu-latest`, `macos-latest`, `windows-latest`, and a FreeBSD 14 VM (`vmactions/freebsd-vm`) executing `uv sync --dev`, `uv run ruff check .`, `uv run pytest -v`, and `uv run llama-mcp-install --dry-run`.
+Requires **Python `>=3.11`**. GitHub Actions CI runs on `ubuntu-latest`, `macos-latest`, `windows-latest`, and a real FreeBSD 15 VM (`vmactions/freebsd-vm`) executing `uv sync --dev`, `uv run ruff check .`, `uv run pytest -v`, and `uv run llama-mcp-install --dry-run`.
 
 ```bash
 uv run pytest -v

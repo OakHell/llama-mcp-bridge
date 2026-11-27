@@ -409,7 +409,17 @@ def _auto_install_llama_server(
 def _install_reboot_crontab(server_bin: str, models_ini: str, host: str, port: int, dry_run: bool) -> None:
     """Install a deduplicated @reboot user crontab entry tagged with # llama-mcp-bridge."""
     srv_path = Path(server_bin).expanduser()
-    if not srv_path.is_absolute() or not srv_path.is_file():
+    is_valid_abs = srv_path.is_absolute() and srv_path.is_file()
+    if dry_run:
+        entry = (
+            f"@reboot nohup {srv_path} --models-preset {models_ini} "
+            f"--host {host} --port {port} >/dev/null 2>&1 & # llama-mcp-bridge"
+        )
+        print(f"[DRY-RUN] Would install crontab entry:\n{entry}")
+        if not is_valid_abs:
+            print("[DRY-RUN] Note: an existing absolute llama_server_bin path will be required when dry_run=False.")
+        return
+    if not is_valid_abs:
         raise ValueError(
             f"Refusing to install @reboot crontab: server_bin must be an existing absolute path, got {server_bin!r}"
         )
@@ -417,9 +427,6 @@ def _install_reboot_crontab(server_bin: str, models_ini: str, host: str, port: i
         f"@reboot nohup {srv_path} --models-preset {models_ini} "
         f"--host {host} --port {port} >/dev/null 2>&1 & # llama-mcp-bridge"
     )
-    if dry_run:
-        print(f"[DRY-RUN] Would install crontab entry:\n{entry}")
-        return
 
     res = subprocess.run(["crontab", "-l"], capture_output=True, text=True, check=False)
     existing = res.stdout.splitlines() if res.returncode == 0 else []

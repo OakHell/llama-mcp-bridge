@@ -127,7 +127,8 @@
 - [ ] **T21:** Unit test `_uninstall_bridge` across `launchd`, Windows `schtasks`, `systemd`, and `crontab`.
 - [ ] **T22:** Integration test running `--configure-client --apply` followed by MCP `initialize` and `tools/list`.
 - [ ] **T23:** Optional end-to-end test against a real `llama-server` binary.
-- [x] **T24:** Add FreeBSD VM CI job (`vmactions/freebsd-vm` on `ubuntu-latest`) running `pytest` and `llama-mcp-install --dry-run` on a real FreeBSD environment.
+- [x] **T24:** Add real FreeBSD VM CI job (`vmactions/freebsd-vm` on `ubuntu-latest` with `cache-after-prepare: true`) running full `pytest` suite and `llama-mcp-install` dry-runs.
+- [ ] **T25:** Optional end-to-end `--selftest` on FreeBSD VM against pkg-installed `llama.cpp` (`system-bin` mode).
 
 ## Documentation Gaps
 - [x] **D1:** Add a 3–4 sentence **Design Stance** paragraph in `README.md` right after the intro (Ollama ease + `llama.cpp` transparency; hardware/geometry-derived tuning; agency-free specialist boundary; small composable primitives).

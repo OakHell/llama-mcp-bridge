@@ -208,3 +208,19 @@ def test_s5_crontab_rejects_relative_or_missing_binary(tmp_path: Path):
 
     with pytest.raises(ValueError, match="existing absolute path"):
         _install_reboot_crontab("llama-server", str(tmp_path / "models.ini"), "127.0.0.1", 8080, dry_run=False)
+
+
+def test_install_reboot_crontab_dry_run_without_binary(capsys, monkeypatch, tmp_path: Path):
+    from llama_mcp_bridge.installer import _generate_service_file
+
+    monkeypatch.setenv("LLAMA_MCP_HOME", str(tmp_path))
+    with (
+        patch("llama_mcp_bridge.installer.sys.platform", "freebsd14"),
+        patch("llama_mcp_bridge.installer.shutil.which", return_value=None),
+    ):
+        _generate_service_file(dry_run=True)
+        out = capsys.readouterr().out
+        assert "[DRY-RUN] Would install crontab entry:" in out
+
+        with pytest.raises(ValueError, match="existing absolute path"):
+            _generate_service_file(dry_run=False)

@@ -43,16 +43,17 @@ jobs:
         uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
+          cache-after-prepare: true
+          # Note: cache-after-prepare keys on the VM image and prepare script text rather than pyproject.toml;
+          # clear the FreeBSD Actions cache (or bump a comment here) when adding new dependencies.
           prepare: |
-            pkg install -y python312 uv rust \
-              py312-pydantic2 py312-pydantic-core py312-cryptography \
-              py312-rpds-py py312-pyyaml py312-cffi py312-pytest \
-              py312-requests py312-rich py312-pathspec py312-anyio \
-              py312-httpx py312-jsonschema py312-starlette py312-uvicorn \
-              py312-platformdirs py312-python-dotenv
-          run: |
+            pkg install -y python311
+            pkg install -y uv || (python3.11 -m ensurepip --upgrade && python3.11 -m pip install --upgrade uv)
             export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
             uv pip install --system --break-system-packages -e .
+            uv pip install --system --break-system-packages pytest
+          run: |
+            export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
             pytest -v
             llama-mcp-install --dry-run
             llama-mcp-install --install-service --dry-run
