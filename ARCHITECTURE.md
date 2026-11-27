@@ -9,14 +9,17 @@ flowchart TD
     subgraph CLI["CLI Entrypoints"]
         INSTALL["installer.py<br/>(llama-mcp-install / llama-mcp-ps)"]
         MODELS["models_cli.py<br/>(llama-mcp-models)"]
+        CFGCLI["config_cli.py<br/>(llama-mcp-config)"]
         BRIDGE["bridge.py<br/>(llama-mcp-bridge)"]
     end
 
-    subgraph InstallerModules["Installer Submodules"]
+    subgraph InstallerModules["Installer & Diagnostics"]
         SVC["service_install.py<br/>(binary, archive, systemd/launchd/schtasks/crontab)"]
         DL["model_download.py<br/>(.part resume, SHA-256)"]
         CLIENT["client_config.py<br/>(MCP JSON snippets & harness cleanup)"]
         SKILL["skill_install.py<br/>(SKILL.md installation)"]
+        OLLAMA["ollama_import.py<br/>(manifest parser & blob symlinker)"]
+        DIAG["diagnostics.py<br/>(--profile, --selftest, --export/--diff-config)"]
     end
 
     subgraph Core["Core Runtime"]
@@ -30,9 +33,12 @@ flowchart TD
         HYG["hygiene.py<br/>(clean_mcp_output)"]
     end
 
-    INSTALL --> SVC & DL & CLIENT & SKILL
+    INSTALL --> SVC & DL & CLIENT & SKILL & OLLAMA & DIAG
     INSTALL --> CFG & HW & PRESETS & SUP
-    MODELS --> CFG & HW & PRESETS & GGUF & DL
+    MODELS --> CFG & HW & PRESETS & GGUF & DL & OLLAMA
+    CFGCLI --> CFG
+    OLLAMA --> GGUF & PRESETS & HW
+    DIAG --> CFG & GGUF & PRESETS & HW & SUP
     BRIDGE --> CFG & DISC & SUP & HYG & HW
     SVC --> CFG & PATHS & SUP & CLIENT
     DL --> PRESETS & HW

@@ -73,5 +73,6 @@ jobs:
           run: |
             export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
             pytest -v
+            if command -v llama-server >/dev/null 2>&1; then llama-mcp-install --selftest || true; fi
             llama-mcp-install --dry-run
             llama-mcp-install --install-service --dry-run
