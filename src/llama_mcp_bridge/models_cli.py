@@ -2,6 +2,8 @@
 
 import argparse
 import configparser
+import importlib.metadata
+import logging
 import shutil
 import sys
 from collections.abc import Sequence
@@ -25,6 +27,16 @@ from llama_mcp_bridge.presets import (
     remove_models_from_ini,
     resolve_hf_gguf_repo,
 )
+
+__all__ = [
+    "_configured_presets",
+    "_handle_custom_add",
+    "_preset_total_size_gb",
+    "_print_models_list",
+    "_read_key",
+    "main",
+    "select_presets_interactive",
+]
 
 _PRESET_DESCRIPTIONS: dict[str, str] = {
     "digest": "High-speed structured JSON & log extraction",
@@ -189,7 +201,9 @@ def _handle_custom_add(
 ) -> None:
     """Resolve and add an unconstrained Hugging Face (--hf) or local (--file) GGUF model."""
     if hf_spec:
-        repo_id, model_file, mmproj_file = resolve_hf_gguf_repo(hf_spec, mmproj_hint=mmproj_hint)
+        repo_id, model_file, mmproj_file = resolve_hf_gguf_repo(
+            hf_spec, mmproj_hint=mmproj_hint, tier=profile.tier
+        )
         specs = [
             {
                 "role": preset_name,
@@ -280,6 +294,17 @@ def _handle_custom_add(
 def main() -> None:
     """Entry point for llama-mcp-models CLI."""
     parser = argparse.ArgumentParser(description="Manage configured presets and GGUF models.")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"llama-mcp-models {importlib.metadata.version('llama-mcp-bridge')}",
+    )
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="WARNING",
+        help="Logging verbosity level.",
+    )
     parser.add_argument("action", nargs="?", choices=["list", "add", "remove"], help="Action to run.")
     parser.add_argument("presets", nargs="*", help="Preset names for add/remove.")
     parser.add_argument("--dir", "--home", dest="workspace_dir", type=str, help="Explicit workspace directory.")
@@ -304,6 +329,10 @@ def main() -> None:
     parser.add_argument("-y", "--yes", action="store_true", help="Confirm destructive removals.")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files.")
     args = parser.parse_args()
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
 
     cfg = load_config(explicit_dir=args.workspace_dir)
     profile = detect_hardware()

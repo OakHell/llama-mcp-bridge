@@ -303,7 +303,7 @@ def test_tui_wizard_generates_configs(monkeypatch, tmp_path: Path):
     ):
         _run_tui_wizard()
 
-    assert os.environ["LLAMA_MCP_HOME"] == str(custom_ws)
+    assert os.environ["LLAMA_MCP_HOME"] == str(tmp_path)
     assert (custom_ws / "models.ini").exists()
     assert (custom_ws / "bridge.ini").exists()
     assert "models_ini =" in (custom_ws / "bridge.ini").read_text(encoding="utf-8")

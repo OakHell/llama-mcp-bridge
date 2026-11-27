@@ -169,7 +169,7 @@ Spanning distinct model families decorrelates role failures across extraction, c
 
 ### Reasoning Management
 
-All presets use `reasoning-format = deepseek` with a shared `reasoning-budget-message` cutoff string so thinking models emit a final answer before hitting token limits, paired with deterministic tag stripping in [hygiene.py](src/llama_mcp_bridge/hygiene.py).
+All presets use `reasoning-format = deepseek` with a shared `reasoning-budget-message` cutoff string so thinking models emit a final answer before hitting token limits, paired with deterministic tag stripping in [hygiene.py](src/llama_mcp_bridge/hygiene.py). See [docs/reasoning-management.md](docs/reasoning-management.md), [docs/gguf-auto-tuning.md](docs/gguf-auto-tuning.md), [docs/failure-classification.md](docs/failure-classification.md), and [ARCHITECTURE.md](ARCHITECTURE.md) for deep dives.
 
 ## Tradeoffs & Non-Goals
 
@@ -188,16 +188,29 @@ All presets use `reasoning-format = deepseek` with a shared `reasoning-budget-me
 
 ## Development
 
-Requires **Python `>=3.11`**. GitHub Actions CI runs on `ubuntu-latest`, `macos-latest`, `windows-latest`, and a real FreeBSD 15 VM (`vmactions/freebsd-vm`) executing `uv sync --dev`, `uv run ruff check .`, `uv run pytest -v`, and `uv run llama-mcp-install --dry-run`.
+Requires **Python `>=3.11`**. GitHub Actions CI runs on `ubuntu-latest`, `macos-latest`, `windows-latest`, and a real FreeBSD 15 VM (`vmactions/freebsd-vm`) executing `uv sync --dev`, `uv run ruff check .`, `uv run mypy src`, `uv run pytest -v`, and `uv run llama-mcp-install --dry-run`.
 
 ```bash
-uv run pytest -v
 uv run ruff check .
+uv run mypy src
+uv run pytest -v
 ```
+
+## Troubleshooting / FAQ
+
+- **Command not found after `uv tool install` (especially on Windows):** Run `uv tool update-shell` and reopen your terminal, or prepend `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows) to `PATH`.
+- **`--doctor` shows `Server /health: PASS (Standby)`:** This is expected when `auto_spawn = true`; `llama-server` starts lazily on the first MCP tool call.
+- **Newly added custom `ask_<name>` tool is missing from `tools/list`:** Restart or reload your MCP client to refresh `tools/list`, or call `ask_preset(preset="<name>", ...)` immediately without restarting.
+- **VRAM / RAM Out-of-Memory (OOM) errors:** Lower `ctx-size` in `models.ini`, switch `residency = stingy` in `bridge.ini`, or set `fallback_on_oom = true` to retry text prompts on `digest`.
+- **Hugging Face 404 during model download:** Run `llama-mcp-install --verify-models` to check curated URLs and get live Hugging Face GGUF search alternatives.
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, verification commands (`ruff`, `mypy`, `pytest`), and pull request guidelines, and [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for upcoming milestones (`v0.9.0`–`v0.12.0`) and [SHIPPED.md](SHIPPED.md) for all shipped releases (`v0.1.0`–`v0.9.0`).
+See [ROADMAP.md](ROADMAP.md) for upcoming milestones (`v0.10.0`–`v0.12.0`) and [SHIPPED.md](SHIPPED.md) for all shipped releases (`v0.1.0`–`v0.10.0`).
 
 ## License
 

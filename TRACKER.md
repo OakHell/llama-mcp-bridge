@@ -21,39 +21,39 @@
 - [x] **B12 — Clear error when `cmake` and `uvx` are both missing (`installer.py`):** Raise `RuntimeError("cmake not found; install cmake or uvx, or use --mode prebuilt")` before `subprocess.run` instead of letting `["cmake"]` fail with an opaque `FileNotFoundError`.
 
 ## P2 — Medium Edge Cases
-- [ ] **M1 — Expand `_cleanup_harness_mcp_configs` to all 7 harnesses (`installer.py`):** Mirror `_resolve_harness_config_paths` so `cline`, `windsurf`, and `zed` are cleaned up on `--uninstall` alongside `antigravity`, `claude-code`, and `cursor`.
-- [ ] **M2 — Delete empty `mcpServers` object on cleanup (`installer.py`):** Remove the parent `"mcpServers"` key from harness JSON configs when removing `"local-ai"` leaves `"mcpServers": {}` empty.
-- [ ] **M3 — Consolidate duplicate image data-URI encoders (`bridge.py`):** Merge `_encode_image_data_uri` and `_encode_image_to_data_uri` into a single helper.
-- [ ] **M4 — Inherit tier defaults in `merge_custom_preset_ini` (`presets.py`):** Populate `ctx-size` and `n-gpu-layers` from the detected hardware tier defaults when adding custom presets instead of hardcoding `8192` / omitting `n-gpu-layers`.
-- [ ] **M5 — Tier-aware quant heuristic in `resolve_hf_gguf_repo` (`presets.py`):** Select default GGUF quantisation preference using the detected hardware tier rather than always picking `Q4_K_M`.
-- [ ] **M6 — Document basename stripping in `remove_models_from_ini` (`presets.py`):** Add a docstring/comment clarifying that `.name` restricts file deletion strictly to `models_dir` basenames.
+- [x] **M1 — Expand `_cleanup_harness_mcp_configs` to all 7 harnesses (`installer.py`):** Mirror `_resolve_harness_config_paths` so `cline`, `windsurf`, and `zed` are cleaned up on `--uninstall` alongside `antigravity`, `claude-code`, and `cursor`.
+- [x] **M2 — Delete empty `mcpServers` object on cleanup (`installer.py`):** Remove the parent `"mcpServers"` key from harness JSON configs when removing `"local-ai"` leaves `"mcpServers": {}` empty.
+- [x] **M3 — Consolidate duplicate image data-URI encoders (`bridge.py`):** Merge `_encode_image_data_uri` and `_encode_image_to_data_uri` into a single helper.
+- [x] **M4 — Inherit tier defaults in `merge_custom_preset_ini` (`presets.py`):** Populate `ctx-size` and `n-gpu-layers` from the detected hardware tier defaults when adding custom presets instead of hardcoding `8192` / omitting `n-gpu-layers`.
+- [x] **M5 — Tier-aware quant heuristic in `resolve_hf_gguf_repo` (`presets.py`):** Select default GGUF quantisation preference using the detected hardware tier rather than always picking `Q4_K_M`.
+- [x] **M6 — Document basename stripping in `remove_models_from_ini` (`presets.py`):** Add a docstring/comment clarifying that `.name` restricts file deletion strictly to `models_dir` basenames.
 - [x] **M7 — Validate archive symlink targets in `_extract_archive` (`installer.py`):** Reject or bound symlinks inside downloaded archives whose resolved targets point outside `dest_dir` before `_flatten_extracted_dir` moves them.
-- [ ] **M8 — Detect VS Code Insiders and VSCodium for `cline` (`installer.py`):** Extend `_resolve_harness_config_paths("cline")` to detect `Code - Insiders` and `VSCodium` globalStorage directories in addition to `Code`.
-- [ ] **M9 — Document/harden `_resolve_bundled_skill_path` fallback (`installer.py`):** Prefer `importlib.resources` and document the `parents[2]` repo-root fallback assumption (or log a debug notice when used).
+- [x] **M8 — Detect VS Code Insiders and VSCodium for `cline` (`installer.py`):** Extend `_resolve_harness_config_paths("cline")` to detect `Code - Insiders` and `VSCodium` globalStorage directories in addition to `Code`.
+- [x] **M9 — Document/harden `_resolve_bundled_skill_path` fallback (`installer.py`):** Prefer `importlib.resources` and document the `parents[2]` repo-root fallback assumption (or log a debug notice when used).
 - [x] **M10 — Validate `llama-server --version` in `_run_doctor` (`installer.py`):** Run `subprocess.run([srv_bin, "--version"], timeout=5)` in `_run_doctor` to verify the binary actually executes rather than only checking file permissions.
-- [ ] **M11 — Cross-check `models.ini` presets against registered MCP tools in `_run_doctor` (`installer.py`):** Verify every `[preset]` in `models.ini` has a corresponding registered `ask_<preset>` tool.
-- [ ] **M12 — Check free disk space in `_run_doctor` (`installer.py`):** Check available disk space in `models_dir` before recommending `--download-models`.
-- [ ] **M13 — Standardize HTTP timeout between `probe_model_metadata` and `verify_model_url` (`presets.py`):** Align `timeout=5` and `timeout=10` to a single consistent constant.
-- [ ] **M14 — Expose `--max-workers` on `verify_tier_models` (`installer.py`):** Make the `ThreadPoolExecutor(max_workers=8)` worker count configurable via `--max-workers` to avoid Hugging Face rate limits.
-- [ ] **M15 — URL-encode filenames in Hugging Face URLs (`presets.py`):** Use `urllib.parse.quote` on filenames when constructing `https://huggingface.co/{repo}/resolve/main/{filename}` URLs.
-- [ ] **M16 — Cache `detect_hardware()` in error classification (`bridge.py`):** Cache the `SystemProfile` instead of spawning hardware probe subprocesses on every inference error.
-- [ ] **M17 — Mtime-cache `load_config()` (`bridge.py`):** Cache parsed `bridge.ini` / `models.ini` keyed by file `st_mtime` instead of re-reading from disk on every tool call.
-- [ ] **M18 — Restore `LLAMA_MCP_HOME` env state after TUI wizard (`installer.py`):** Avoid mutating `os.environ["LLAMA_MCP_HOME"]` permanently in-process after `_run_tui_wizard` exits.
-- [ ] **M19 — Preserve key case in `_persist_server_bin` (`installer.py`):** Use `ConfigParser(default_section=None, interpolation=None)` with `optionxform = str` so mixed-case keys in `bridge.ini` round-trip intact.
-- [ ] **M20 — Print change summary in `_run_tui_wizard` (`installer.py`):** Log what changed vs. what was preserved when re-running the TUI wizard on an existing workspace.
+- [x] **M11 — Cross-check `models.ini` presets against registered MCP tools in `_run_doctor` (`installer.py`):** Verify every `[preset]` in `models.ini` has a corresponding registered `ask_<preset>` tool.
+- [x] **M12 — Check free disk space in `_run_doctor` (`installer.py`):** Check available disk space in `models_dir` before recommending `--download-models`.
+- [x] **M13 — Standardize HTTP timeout between `probe_model_metadata` and `verify_model_url` (`presets.py`):** Align `timeout=5` and `timeout=10` to a single consistent constant.
+- [x] **M14 — Expose `--max-workers` on `verify_tier_models` (`installer.py`):** Make the `ThreadPoolExecutor(max_workers=8)` worker count configurable via `--max-workers` to avoid Hugging Face rate limits.
+- [x] **M15 — URL-encode filenames in Hugging Face URLs (`presets.py`):** Use `urllib.parse.quote` on filenames when constructing `https://huggingface.co/{repo}/resolve/main/{filename}` URLs.
+- [x] **M16 — Cache `detect_hardware()` in error classification (`bridge.py`):** Cache the `SystemProfile` instead of spawning hardware probe subprocesses on every inference error.
+- [x] **M17 — Mtime-cache `load_config()` (`bridge.py`):** Cache parsed `bridge.ini` / `models.ini` keyed by file `st_mtime` instead of re-reading from disk on every tool call.
+- [x] **M18 — Restore `LLAMA_MCP_HOME` env state after TUI wizard (`installer.py`):** Avoid mutating `os.environ["LLAMA_MCP_HOME"]` permanently in-process after `_run_tui_wizard` exits.
+- [x] **M19 — Preserve key case in `_persist_server_bin` (`installer.py`):** Use `ConfigParser(default_section=None, interpolation=None)` with `optionxform = str` so mixed-case keys in `bridge.ini` round-trip intact.
+- [x] **M20 — Print change summary in `_run_tui_wizard` (`installer.py`):** Log what changed vs. what was preserved when re-running the TUI wizard on an existing workspace.
 
 ## P3 — Polish & Nits
-- [ ] **N1:** Remove redundant `os.X_OK` check alongside `sys.platform == "win32"` in `_run_doctor` (`installer.py`).
-- [ ] **N2:** Remove unused `server_url` field from `BridgeConfig` (`bridge.py`) or wire it up.
-- [ ] **N3:** Remove unused `distro_family` field from `SystemProfile` (`installer.py`) or wire it up.
-- [ ] **N4:** Derive `int_fields` and `bool_fields` in `load_config` (`bridge.py`) from `BridgeConfig` dataclass field annotations instead of hardcoding field names.
-- [ ] **N5:** Clean up redundant local `base64` / `mimetypes` imports in `bridge.py` when consolidating image helpers (`M3`).
-- [ ] **N6:** Add a note to the Windows PowerShell preflight in `skills/llama-mcp-setup/SKILL.md` for environments where `uv tool update-shell` has not yet been run.
-- [ ] **N7:** Add `--json` machine-parseable output flag to `llama-mcp-install --doctor`.
-- [ ] **N8:** Add `--json` machine-parseable output flag to `llama-mcp-ps` / `llama-mcp-install --ps`.
-- [ ] **N9:** Surface the active workspace path and whether `LLAMA_MCP_HOME` is active in `--ps` and `--doctor` output.
-- [ ] **N10:** Add `[project.urls]` (`Homepage`, `Repository`, `Issues`) to `pyproject.toml`.
-- [ ] **N11:** Add PyPI `classifiers` to `pyproject.toml`.
+- [x] **N1:** Remove redundant `os.X_OK` check alongside `sys.platform == "win32"` in `_run_doctor` (`installer.py`).
+- [x] **N2:** Remove unused `server_url` field from `BridgeConfig` (`bridge.py`) or wire it up.
+- [x] **N3:** Remove unused `distro_family` field from `SystemProfile` (`installer.py`) or wire it up.
+- [x] **N4:** Derive `int_fields` and `bool_fields` in `load_config` (`bridge.py`) from `BridgeConfig` dataclass field annotations instead of hardcoding field names.
+- [x] **N5:** Clean up redundant local `base64` / `mimetypes` imports in `bridge.py` when consolidating image helpers (`M3`).
+- [x] **N6:** Add a note to the Windows PowerShell preflight in `skills/llama-mcp-setup/SKILL.md` for environments where `uv tool update-shell` has not yet been run.
+- [x] **N7:** Add `--json` machine-parseable output flag to `llama-mcp-install --doctor`.
+- [x] **N8:** Add `--json` machine-parseable output flag to `llama-mcp-ps` / `llama-mcp-install --ps`.
+- [x] **N9:** Surface the active workspace path and whether `LLAMA_MCP_HOME` is active in `--ps` and `--doctor` output.
+- [x] **N10:** Add `[project.urls]` (`Homepage`, `Repository`, `Issues`) to `pyproject.toml`.
+- [x] **N11:** Add PyPI `classifiers` to `pyproject.toml`.
 - [x] **N12:** Remove dead `_MODEL_LOCK` and unused `import threading` in `bridge.py`.
 
 ## Features
@@ -81,27 +81,27 @@
 - [ ] **F22 — Optional per-call `timeout_s` override** on MCP tool invocations.
 
 ## Chores
-- [ ] **C1:** Consolidate `_encode_image_data_uri` and `_encode_image_to_data_uri` (`bridge.py`).
-- [ ] **C2:** Add `src/llama_mcp_bridge/py.typed` PEP 561 marker.
-- [ ] **C3:** Add `mypy` (or `pyright`) static type-checking job to `.github/workflows/`.
-- [ ] **C4:** Add `--version` flag to `llama-mcp-install`, `llama-mcp-models`, and `llama-mcp-bridge`.
-- [ ] **C5:** Add `--log-level` CLI flag and structured Python `logging` setup.
-- [ ] **C6:** Make `llama-server.log` path configurable in `bridge.ini` (`server_log`).
-- [ ] **C7:** Add `--dry-run` support to `--verify-models`.
-- [ ] **C8:** Standardize on `Path.home()` instead of mixing `os.path.expanduser` across modules.
-- [ ] **C9:** Protect `_register_configured_tools` with a re-entrant lock for thread safety.
-- [ ] **C10:** Define explicit `__all__` exports in every module under `src/llama_mcp_bridge/`.
+- [x] **C1:** Consolidate `_encode_image_data_uri` and `_encode_image_to_data_uri` (`bridge.py`).
+- [x] **C2:** Add `src/llama_mcp_bridge/py.typed` PEP 561 marker.
+- [x] **C3:** Add `mypy` (or `pyright`) static type-checking job to `.github/workflows/`.
+- [x] **C4:** Add `--version` flag to `llama-mcp-install`, `llama-mcp-models`, and `llama-mcp-bridge`.
+- [x] **C5:** Add `--log-level` CLI flag and structured Python `logging` setup.
+- [x] **C6:** Make `llama-server.log` path configurable in `bridge.ini` (`server_log`).
+- [x] **C7:** Add `--dry-run` support to `--verify-models`.
+- [x] **C8:** Standardize on `Path.home()` instead of mixing `os.path.expanduser` across modules.
+- [x] **C9:** Protect `_register_configured_tools` with a re-entrant lock for thread safety.
+- [x] **C10:** Define explicit `__all__` exports in every module under `src/llama_mcp_bridge/`.
 - [x] **C11:** Separate shipped history (`SHIPPED.md`) from forward-looking `ROADMAP.md` without bloating `README.md`.
-- [ ] **C12:** Add `.pre-commit-config.yaml` configured for `ruff` and `mypy`.
-- [ ] **C13:** Add `Taskfile.yml` or `Makefile` for common `test`, `lint`, `typecheck`, and `doctor` tasks.
-- [ ] **C14:** Add `[project.urls]` and `classifiers` to `pyproject.toml`.
-- [ ] **C15:** Add `mypy` and `types-requests` to `[dependency-groups] dev` in `pyproject.toml`.
-- [ ] **C16:** Split `installer.py` (~1,500 lines) into focused submodules (`service_install.py`, `model_download.py`, `client_config.py`, `skill_install.py`).
-- [ ] **C17:** Split file discovery (`_expand_target_files`, gitignore walking) out of `bridge.py` into `discovery.py`.
-- [ ] **C18:** Consolidate `_PRESET_NAMES` in `installer.py` with `_VALID_PRESETS` in `presets.py`.
-- [ ] **C19:** Derive `_VALID_PRESETS` directly from `base_config` keys in `generate_models_ini` (`presets.py`).
-- [ ] **C20:** Add `ARCHITECTURE.md` (or module call-graph diagram in `README.md`).
-- [ ] **C21:** Add `docs/` deep-dive guides (reasoning-budget stack, GGUF header auto-tuning, stderr failure classifier).
+- [x] **C12:** Add `.pre-commit-config.yaml` configured for `ruff` and `mypy`.
+- [x] **C13:** Add `Taskfile.yml` or `Makefile` for common `test`, `lint`, `typecheck`, and `doctor` tasks.
+- [x] **C14:** Add `[project.urls]` and `classifiers` to `pyproject.toml`.
+- [x] **C15:** Add `mypy` and `types-requests` to `[dependency-groups] dev` in `pyproject.toml`.
+- [x] **C16:** Split `installer.py` (~1,500 lines) into focused submodules (`service_install.py`, `model_download.py`, `client_config.py`, `skill_install.py`).
+- [x] **C17:** Split file discovery (`_expand_target_files`, gitignore walking) out of `bridge.py` into `discovery.py`.
+- [x] **C18:** Consolidate `_PRESET_NAMES` in `installer.py` with `_VALID_PRESETS` in `presets.py`.
+- [x] **C19:** Derive `_VALID_PRESETS` directly from `base_config` keys in `generate_models_ini` (`presets.py`).
+- [x] **C20:** Add `ARCHITECTURE.md` (or module call-graph diagram in `README.md`).
+- [x] **C21:** Add `docs/` deep-dive guides (reasoning-budget stack, GGUF header auto-tuning, stderr failure classifier).
 
 ## Testing Gaps
 - [x] **T1:** Unit test `_select_llama_release_asset` with AMD ROCm release assets.
@@ -115,17 +115,17 @@
 - [x] **T9:** Unit test `_configure_client --apply` when target JSON file contains a top-level list instead of a dict.
 - [x] **T10:** Unit test `probe_model_metadata` timeout handling.
 - [x] **T11:** Unit test `_find_llama_server` when configured `llama_server_bin` path does not exist.
-- [ ] **T12:** Unit test relative `workspace` path resolution in `bridge.ini` (`workspace = ./local`).
-- [ ] **T13:** Unit test `_discover_ancestor_gitignores` with directory symlink loops.
-- [ ] **T14:** Unit test `_walk_dir_pruned` with directory symlink loops.
+- [x] **T12:** Unit test relative `workspace` path resolution in `bridge.ini` (`workspace = ./local`).
+- [x] **T13:** Unit test `_discover_ancestor_gitignores` with directory symlink loops.
+- [x] **T14:** Unit test `_walk_dir_pruned` with directory symlink loops.
 - [x] **T15:** Unit test `query_llama` when `models.ini` is deleted at runtime.
-- [ ] **T16:** Unit test `_persist_server_bin` round-trip preservation of existing `bridge.ini` sections and key case.
-- [ ] **T17:** Property-based tests for `_expand_target_files` precedence (`include > gitignore > ignore > defaults`).
-- [ ] **T18:** Property-based tests for `_build_prompt_with_files` character budget and smallest-first sorting.
-- [ ] **T19:** Expand fuzz/chaos tests for `clean_mcp_output` with nested code blocks, LaTeX, and malformed reasoning tags.
+- [x] **T16:** Unit test `_persist_server_bin` round-trip preservation of existing `bridge.ini` sections and key case.
+- [x] **T17:** Property-based tests for `_expand_target_files` precedence (`include > gitignore > ignore > defaults`).
+- [x] **T18:** Property-based tests for `_build_prompt_with_files` character budget and smallest-first sorting.
+- [x] **T19:** Expand fuzz/chaos tests for `clean_mcp_output` with nested code blocks, LaTeX, and malformed reasoning tags.
 - [x] **T20:** Unit test `_run_doctor` with `auto_spawn = false` and server offline (expects `WARN`, not `FAIL` or `Standby`).
-- [ ] **T21:** Unit test `_uninstall_bridge` across `launchd`, Windows `schtasks`, `systemd`, and `crontab`.
-- [ ] **T22:** Integration test running `--configure-client --apply` followed by MCP `initialize` and `tools/list`.
+- [x] **T21:** Unit test `_uninstall_bridge` across `launchd`, Windows `schtasks`, `systemd`, and `crontab`.
+- [x] **T22:** Integration test running `--configure-client --apply` followed by MCP `initialize` and `tools/list`.
 - [ ] **T23:** Optional end-to-end test against a real `llama-server` binary.
 - [x] **T24:** Add real FreeBSD VM CI job (`vmactions/freebsd-vm` on `ubuntu-latest` with `cache-after-prepare: true`) running full `pytest` suite and `llama-mcp-install` dry-runs.
 - [ ] **T25:** Optional end-to-end `--selftest` on FreeBSD VM against pkg-installed `llama.cpp` (`system-bin` mode).
@@ -150,17 +150,17 @@
 - [x] **D17:** Clarify in `README.md` that client reload is only for `tools/list` discoverability, while `ask_preset` can call newly added presets immediately.
 - [x] **D18:** Expand custom model auto-tuning description in `README.md` (`resolve_hf_gguf_repo` `mmproj` selection + GGUF header geometry tuning via `--tune-mode`).
 - [x] **D19:** Surface `LLAMA_MCP_HOME` as a first-class environment variable option in `README.md` Configuration.
-- [ ] **D20:** Add a **Contributing** section in `README.md` linking to `CONTRIBUTING.md`.
-- [ ] **D21:** Add a concise **Troubleshooting / FAQ** section in `README.md`.
+- [x] **D20:** Add a **Contributing** section in `README.md` linking to `CONTRIBUTING.md`.
+- [x] **D21:** Add a concise **Troubleshooting / FAQ** section in `README.md`.
 - [x] **D22:** Warn in `SKILL.md` that `--apply` modifies the user's harness config and requires explicit user authorization (`S4`).
 - [x] **D23:** Mention `--verify-models` in `SKILL.md` black-box troubleshooting.
 - [x] **D24:** Clarify in `SKILL.md` that client restart refreshes `tools/list` discoverability while `ask_preset` works immediately.
 - [x] **D25:** Create `SHIPPED.md` for shipped history (and `CHANGELOG.md` when breaking SemVer changes occur).
-- [ ] **D26:** Create `SECURITY.md` with vulnerability reporting scope and process.
-- [ ] **D27:** Create `CONTRIBUTING.md` (dev environment, `ruff`, `pytest`, PR guidelines).
-- [ ] **D28:** Create `CODE_OF_CONDUCT.md`.
-- [ ] **D29:** Create `.github/ISSUE_TEMPLATE/` (bug report, feature request) and `.github/PULL_REQUEST_TEMPLATE.md`.
-- [ ] **D30:** Create `ARCHITECTURE.md` with module call graph and data-flow diagram.
+- [x] **D26:** Create `SECURITY.md` with vulnerability reporting scope and process.
+- [x] **D27:** Create `CONTRIBUTING.md` (dev environment, `ruff`, `pytest`, PR guidelines).
+- [x] **D28:** Create `CODE_OF_CONDUCT.md`.
+- [x] **D29:** Create `.github/ISSUE_TEMPLATE/` (bug report, feature request) and `.github/PULL_REQUEST_TEMPLATE.md`.
+- [x] **D30:** Create `ARCHITECTURE.md` with module call graph and data-flow diagram.
 
 ## Deferred / Long-Term (Enterprise Positioning)
 - [ ] **E1:** Structured JSON logging mode (`--log-format json`).

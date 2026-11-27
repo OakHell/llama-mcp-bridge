@@ -33,6 +33,21 @@ jobs:
       - name: Run llama-mcp-install dry-run
         run: uv run llama-mcp-install --dry-run
 
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync UV
+        run: uv sync --dev
+
+      - name: Run mypy
+        run: uv run mypy src
+
   freebsd:
     runs-on: ubuntu-latest
     steps:

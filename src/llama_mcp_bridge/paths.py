@@ -4,6 +4,15 @@ import os
 import sys
 from pathlib import Path
 
+__all__ = [
+    "get_default_workspace",
+    "get_pointer_file",
+    "read_registered_workspace",
+    "register_global_workspace",
+    "resolve_workspace",
+    "unregister_global_workspace",
+]
+
 
 def get_pointer_file(platform_name: str | None = None) -> Path:
     """Return the user-level global workspace pointer file path."""
