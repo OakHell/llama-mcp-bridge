@@ -44,13 +44,13 @@ jobs:
         with:
           usesh: true
           prepare: |
-            pkg install -y python311 uv rust py311-maturin \
-              py311-pydantic-core py311-cryptography py311-rpds-py \
-              py311-pyyaml py311-cffi py311-pytest py311-requests \
-              py311-rich py311-pathspec
+            pkg install -y python312 uv rust py312-maturin \
+              py312-pydantic-core py312-cryptography py312-rpds-py \
+              py312-pyyaml py312-cffi py312-pytest py312-requests \
+              py312-rich py312-pathspec
           run: |
             export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
-            uv venv --python python3.11 --system-site-packages
+            uv venv --python python3.12 --system-site-packages
             uv pip install --no-build-isolation -e .
             uv run pytest -v
             uv run llama-mcp-install --dry-run
