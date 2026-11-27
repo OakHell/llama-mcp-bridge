@@ -84,6 +84,8 @@ Hit an issue? Jump to [Troubleshooting](docs/troubleshooting.md).
 
 ## Specialist Tools
 
+7 GGUF models act as 9 specialist presets: on `8gb`–`16gb`, `coder`, `coder-long`, and `vision-deep` share `Qwen3.5-9B-UD-Q4_K_XL.gguf` (with `mmproj-BF16.gguf` attached for `vision-deep`), while `24gb+` swaps `coder-fast`, `coder`, and `coder-long` to `Qwen2.5-Coder-14B`.
+
 | Tool | Role | Model Family |
 | :--- | :--- | :--- |
 | `ask_digest` | High-speed structured JSON/fact extraction | Liquid LFM3 |

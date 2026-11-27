@@ -77,3 +77,7 @@ Locked in the [STABILITY.md](STABILITY.md) `1.x` contract across all 5 CLI entry
 ### `v1.0.3` — Documentation Accuracy, Quick Start & Tier Parity
 - **Docs & Quick Start:** Added [`docs/index.md`](docs/index.md), dynamic GitHub Release badge, `uv tool update-shell` + unambiguous Quick Start flows, `SKILL.md` pointer, `LLAMA_MCP_HOME` env example, actionable macOS `codesign` & Windows CUDA DLL troubleshooting, and `ROADMAP.md` footer link.
 - **Code-Truth Parity:** Fixed `12gb` tier row in `README.md` (`24K / 40K`, `parallel = 1`), fixed `llama-mcp-models add <name> --hf ...` syntax across docs, updated `pyproject.toml` classifier to `Development Status :: 5 - Production/Stable`, and added `README.md` tier-table parity test in `tests/test_presets.py`.
+
+### `v1.0.4` — PyPI Trusted Publishing, Official MCP Registry & 7-Model/9-Preset Clarification
+- **PyPI & MCP Registry:** Added [`.github/workflows/publish.yml`](.github/workflows/publish.yml) for PyPI Trusted Publishing (`release: [published]`) and [`server.json`](server.json) for the Official MCP Registry.
+- **Docs:** Clarified across [`README.md`](README.md) and [`docs/models.md`](docs/models.md) that the curated starter pack uses **7 GGUF models acting as 9 specialist presets**.

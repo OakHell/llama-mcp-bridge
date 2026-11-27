@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.OakHell/llama-mcp-bridge",
+  "title": "llama-mcp-bridge",
+  "description": "Hardware-aware local LLM MCP bridge powered by llama.cpp router mode (7 GGUF models acting as 9 specialist presets).",
+  "version": "1.0.4",
+  "repository": {
+    "url": "https://github.com/OakHell/llama-mcp-bridge",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "llama-mcp-bridge",
+      "version": "1.0.4",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
