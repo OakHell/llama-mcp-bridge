@@ -3,7 +3,7 @@
   "name": "io.github.OakHell/llama-mcp-bridge",
   "title": "llama-mcp-bridge",
   "description": "Hardware-aware local LLM MCP bridge for llama.cpp (7 GGUF models, 9 presets).",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "repository": {
     "url": "https://github.com/OakHell/llama-mcp-bridge",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "llama-mcp-bridge",
-      "version": "1.0.4",
+      "version": "1.0.4.post1",
       "transport": {
         "type": "stdio"
       }

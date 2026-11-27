@@ -159,3 +159,5 @@ See [docs/troubleshooting.md](docs/troubleshooting.md) for detailed diagnostics.
 - [ARCHITECTURE.md](ARCHITECTURE.md) · [STABILITY.md](STABILITY.md) · [ROADMAP.md](ROADMAP.md) · [TRACKER.md](TRACKER.md) · [SHIPPED.md](SHIPPED.md) · [SKILL.md](skills/llama-mcp-setup/SKILL.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md)
 
 MIT License — see [LICENSE](LICENSE).
+
+<!-- mcp-name: io.github.OakHell/llama-mcp-bridge -->
